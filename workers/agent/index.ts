@@ -28,6 +28,8 @@ import {
 	toolMarkEmailRead,
 	toolMoveEmail,
 	toolDiscardDraft,
+	toolGetActionItems,
+	toolGetPendingFollowUps,
 } from "../lib/tools";
 import { Folders, FOLDER_TOOL_DESCRIPTION, MOVE_FOLDER_TOOL_DESCRIPTION } from "../../shared/folders";
 import type { Env } from "../types";
@@ -264,6 +266,34 @@ function createEmailTools(env: Env, mailboxId: string) {
 			}),
 			execute: async ({ draftId }): Promise<unknown> => {
 				return toolDiscardDraft(env, mailboxId, draftId);
+			},
+		}),
+
+		get_action_items: defineTool({
+			description:
+				"List pending action items extracted from emails. Use to answer 'what do I need to do?' questions. Returns tasks, requests, and commitments with optional due dates.",
+			parameters: z.object({
+				pendingOnly: z
+					.boolean()
+					.default(true)
+					.describe("If true, only return incomplete items (default true)"),
+			}),
+			execute: async ({ pendingOnly }): Promise<unknown> => {
+				return toolGetActionItems(env, mailboxId, { pendingOnly });
+			},
+		}),
+
+		get_pending_follow_ups: defineTool({
+			description:
+				"List sent emails that have not received a reply after a configurable number of days. Use to answer 'what emails are still waiting for a reply?' questions.",
+			parameters: z.object({
+				days: z
+					.number()
+					.default(3)
+					.describe("Number of days without reply before considering unanswered"),
+			}),
+			execute: async ({ days }): Promise<unknown> => {
+				return toolGetPendingFollowUps(env, mailboxId, { days });
 			},
 		}),
 	};

@@ -17,6 +17,7 @@ import { useDeleteEmail, useEmail, useMoveEmail, useReplyToEmail, useSendEmail, 
 import { useFolders } from "~/queries/folders";
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
+import { useActionItems, useCompleteActionItem } from "~/queries/action-items-query";
 import type { Email, Folder, Mailbox } from "~/types";
 
 function EmailPanelSkeleton() {
@@ -139,6 +140,10 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 
 	const hasThread = allMessages.length > 1;
 
+	const { data: actionItems = [] } = useActionItems(mailboxId, false);
+	const visibleActionItems = actionItems.filter((item) => item.emailId === email.id && !item.completedAt);
+	const completeActionItem = useCompleteActionItem(mailboxId ?? "");
+
 	return (
 		<div className="flex flex-col h-full">
 			<EmailPanelToolbar
@@ -174,6 +179,26 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				onViewSource={() => setSourceViewEmail(email)}
 				onDelete={handleDelete}
 			/>
+
+			{visibleActionItems.length > 0 && (
+				<div className="px-5 py-2 border-b border-kumo-line flex flex-wrap gap-2">
+					{visibleActionItems.map((item) => (
+						<button
+							key={item.id}
+							type="button"
+							onClick={() => completeActionItem.mutate(item.id)}
+							title="Click to mark complete"
+							className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-kumo-fill text-xs text-kumo-default hover:bg-kumo-line transition-colors"
+						>
+							<span className="w-3 h-3 rounded-full border border-kumo-subtle shrink-0" />
+							<span>{item.description}</span>
+							{item.dueDate && (
+								<span className="text-kumo-subtle ml-1">{item.dueDate}</span>
+							)}
+						</button>
+					))}
+				</div>
+			)}
 
 			<EmailPanelHeader
 				subject={email.subject}

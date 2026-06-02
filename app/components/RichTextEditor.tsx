@@ -6,6 +6,7 @@ import { Button, Tooltip } from "@cloudflare/kumo";
 import {
 	ArrowClockwiseIcon,
 	ArrowCounterClockwiseIcon,
+	ImageIcon,
 	LinkBreakIcon,
 	LinkSimpleIcon,
 	ListBulletsIcon,
@@ -26,17 +27,25 @@ import { TextStyle } from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import api from "~/services/api";
 
 interface RichTextEditorProps {
 	value: string;
 	onChange: (value: string) => void;
+	/** When true, shows an image upload button in the toolbar. Requires mailboxId. */
+	enableImages?: boolean;
+	mailboxId?: string;
 }
 
 export default function RichTextEditor({
 	value,
 	onChange,
+	enableImages = false,
+	mailboxId,
 }: RichTextEditorProps) {
+	const fileInputRef = useRef<HTMLInputElement>(null);
+
 	const editor = useEditor({
 		extensions: [
 			StarterKit,
@@ -63,7 +72,6 @@ export default function RichTextEditor({
 	useEffect(() => {
 		if (editor && !editor.isDestroyed && value !== editor.getHTML()) {
 			editor.commands.setContent(value);
-			// Place cursor at the start of the document (above quoted text)
 			const rafId = requestAnimationFrame(() => {
 				if (!editor.isDestroyed) {
 					editor.commands.focus('start');
@@ -84,6 +92,23 @@ export default function RichTextEditor({
 		}
 		editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
 	}, [editor]);
+
+	const handleImageUpload = useCallback(async (file: File) => {
+		if (!editor || !mailboxId) return;
+		try {
+			const { url } = await api.uploadSignatureImage(mailboxId, file);
+			editor.chain().focus().setImage({ src: url }).run();
+		} catch (e) {
+			console.error("Image upload failed:", (e as Error).message);
+		}
+	}, [editor, mailboxId]);
+
+	const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+		const file = e.target.files?.[0];
+		if (file) handleImageUpload(file);
+		// Reset so the same file can be re-selected
+		e.target.value = "";
+	}, [handleImageUpload]);
 
 	if (!editor) return null;
 
@@ -202,6 +227,29 @@ export default function RichTextEditor({
 						aria-label="Horizontal rule"
 					/>
 				</Tooltip>
+
+				{enableImages && (
+					<>
+						<div className="mx-1 h-5 w-px bg-kumo-fill" />
+						<Tooltip content="Insert image" side="bottom" asChild>
+							<Button
+								variant="ghost"
+								shape="square"
+								size="sm"
+								icon={<ImageIcon size={16} />}
+								onClick={() => fileInputRef.current?.click()}
+								aria-label="Insert image"
+							/>
+						</Tooltip>
+						<input
+							ref={fileInputRef}
+							type="file"
+							accept="image/png,image/jpeg,image/gif,image/svg+xml,image/webp"
+							className="hidden"
+							onChange={handleFileChange}
+						/>
+					</>
+				)}
 
 				<div className="mx-1 h-5 w-px bg-kumo-fill" />
 

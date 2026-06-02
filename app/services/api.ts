@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import type { Email, Folder, Mailbox } from "~/types";
+import type { Email, Folder, Mailbox, Label, Contact, EmailTemplate } from "~/types";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -147,6 +147,23 @@ const api = {
 	forwardEmail: (mailboxId: string, emailId: string, email: unknown) =>
 		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/forward`, email),
 
+	// Signature images
+	uploadSignatureImage: async (mailboxId: string, file: File): Promise<{ url: string; filename: string }> => {
+		const formData = new FormData();
+		formData.append("file", file);
+		// Use fetch directly — Content-Type must be unset so browser sets multipart/form-data boundary.
+		const res = await fetch(`/api/v1/mailboxes/${mailboxId}/signature-image`, { method: "POST", body: formData });
+		if (!res.ok) {
+			const body = await res.json().catch(() => ({}));
+			throw new ApiError(res.status, body as Record<string, unknown>);
+		}
+		return res.json();
+	},
+
+	// Notifications
+	testNotification: (mailboxId: string, provider: string, settings: Record<string, string>) =>
+		post<{ success: boolean; error?: string }>(`/api/v1/mailboxes/${mailboxId}/test-notification`, { provider, settings }),
+
 	// Folders
 	listFolders: (mailboxId: string) =>
 		get<Folder[]>(`/api/v1/mailboxes/${mailboxId}/folders`),
@@ -160,6 +177,65 @@ const api = {
 	// Search
 	searchEmails: (mailboxId: string, params: Record<string, string>) =>
 		get<EmailListResponse | Email[]>(`/api/v1/mailboxes/${mailboxId}/search`, { params }),
+
+	// Labels
+	listLabels: (mailboxId: string) =>
+		get<Label[]>(`/api/v1/mailboxes/${mailboxId}/labels`),
+	createLabel: (mailboxId: string, name: string, color: string) =>
+		post<Label>(`/api/v1/mailboxes/${mailboxId}/labels`, { name, color }),
+	updateLabel: (mailboxId: string, id: string, name: string, color: string) =>
+		put<Label>(`/api/v1/mailboxes/${mailboxId}/labels/${id}`, { name, color }),
+	deleteLabel: (mailboxId: string, id: string) =>
+		del<void>(`/api/v1/mailboxes/${mailboxId}/labels/${id}`),
+	applyLabel: (mailboxId: string, emailId: string, labelId: string) =>
+		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/labels`, { labelId }),
+	removeLabel: (mailboxId: string, emailId: string, labelId: string) =>
+		del<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/labels/${labelId}`),
+
+	// Snooze & scheduled send
+	snoozeEmail: (mailboxId: string, emailId: string, until: string) =>
+		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/snooze`, { until }),
+	unsnoozeEmail: (mailboxId: string, emailId: string) =>
+		del<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/snooze`),
+	scheduleEmail: (mailboxId: string, emailId: string, sendAt: string) =>
+		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/schedule`, { sendAt }),
+	cancelScheduledEmail: (mailboxId: string, emailId: string) =>
+		del<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/schedule`),
+	listSnoozed: (mailboxId: string) =>
+		get<EmailListResponse>(`/api/v1/mailboxes/${mailboxId}/snoozed`),
+	listScheduled: (mailboxId: string) =>
+		get<EmailListResponse>(`/api/v1/mailboxes/${mailboxId}/scheduled`),
+	listPriorityInbox: (mailboxId: string, params?: { page?: number; limit?: number }) => {
+		const queryParams: Record<string, string> = {};
+		if (params?.page) queryParams.page = String(params.page);
+		if (params?.limit) queryParams.limit = String(params.limit);
+		return get<EmailListResponse>(`/api/v1/mailboxes/${mailboxId}/priority-inbox`, { params: queryParams });
+	},
+	updateEmailTriage: (mailboxId: string, emailId: string, data: { category?: string; priority?: number }) =>
+		put<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/triage`, data),
+
+	// Contacts
+	listContacts: (mailboxId: string, params?: { q?: string; page?: number; limit?: number }) => {
+		const queryParams: Record<string, string> = {};
+		if (params?.q) queryParams.q = params.q;
+		if (params?.page) queryParams.page = String(params.page);
+		if (params?.limit) queryParams.limit = String(params.limit);
+		return get<Contact[]>(`/api/v1/mailboxes/${mailboxId}/contacts`, { params: queryParams });
+	},
+	updateContact: (mailboxId: string, id: string, name: string) =>
+		put<Contact>(`/api/v1/mailboxes/${mailboxId}/contacts/${id}`, { name }),
+	deleteContact: (mailboxId: string, id: string) =>
+		del<void>(`/api/v1/mailboxes/${mailboxId}/contacts/${id}`),
+
+	// Templates
+	listTemplates: (mailboxId: string) =>
+		get<EmailTemplate[]>(`/api/v1/mailboxes/${mailboxId}/templates`),
+	createTemplate: (mailboxId: string, t: Omit<EmailTemplate, "id">) =>
+		post<EmailTemplate>(`/api/v1/mailboxes/${mailboxId}/templates`, t),
+	updateTemplate: (mailboxId: string, id: string, t: Omit<EmailTemplate, "id">) =>
+		put<EmailTemplate>(`/api/v1/mailboxes/${mailboxId}/templates/${id}`, t),
+	deleteTemplate: (mailboxId: string, id: string) =>
+		del<void>(`/api/v1/mailboxes/${mailboxId}/templates/${id}`),
 };
 
 export default api;

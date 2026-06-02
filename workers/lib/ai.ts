@@ -191,3 +191,212 @@ export async function verifyDraft(ai: Ai, body: string): Promise<string> {
 function normalizeWhitespace(s: string): string {
 	return s.replace(/\s+/g, " ").trim();
 }
+
+// ── Action Item Extraction ──────────────────────────────────────────
+
+export interface ActionItemResult {
+	description: string;
+	dueDate?: string | null;
+}
+
+const ACTION_ITEMS_PROMPT = `Extract all explicit tasks, requests, or commitments from the email below. Only include items where someone is expected to do something — skip pleasantries, questions without action, and automatic notifications.
+
+For each item, return:
+- description: short task description (max 100 chars)
+- dueDate: ISO date string (YYYY-MM-DD) if a deadline is mentioned, otherwise omit
+
+Return a JSON array of objects. Return [] if no action items found. Return ONLY the JSON array, no other text.`;
+
+/**
+ * Normalize a free-form date string to ISO date (YYYY-MM-DD) or null.
+ * ISO dates pass through; relative dates are resolved against current time.
+ */
+export function normalizeDueDate(raw: string | undefined | null): string | null {
+	if (!raw) return null;
+	const trimmed = raw.trim();
+	// Already ISO date (YYYY-MM-DD)
+	if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+	// Try JS Date parsing for common formats
+	const parsed = new Date(trimmed);
+	if (!isNaN(parsed.getTime())) {
+		return parsed.toISOString().slice(0, 10);
+	}
+	return null;
+}
+
+export async function extractActionItems(
+	ai: Ai,
+	email: { subject: string; body: string; sender: string },
+): Promise<ActionItemResult[]> {
+	const plainBody = stripHtmlToText(email.body || "").slice(0, 1000);
+	const prompt = `From: ${email.sender}\nSubject: ${email.subject}\n\n${plainBody}`;
+
+	try {
+		const response = (await ai.run(
+			// @ts-expect-error — model string not in generated union
+			"@cf/meta/llama-4-scout-17b-16e-instruct",
+			{
+				messages: [
+					{ role: "system", content: ACTION_ITEMS_PROMPT },
+					{ role: "user", content: prompt },
+				],
+				max_tokens: 500,
+				temperature: 0,
+			},
+		)) as { response?: string };
+
+		const raw = response?.response?.trim() || "";
+		const jsonMatch = raw.match(/\[[\s\S]*\]/);
+		if (!jsonMatch) return [];
+
+		const parsed = JSON.parse(jsonMatch[0]);
+		if (!Array.isArray(parsed)) return [];
+
+		return parsed
+			.filter((item: any) => typeof item?.description === "string" && item.description.trim())
+			.map((item: any) => ({
+				description: String(item.description).slice(0, 100),
+				dueDate: normalizeDueDate(item.dueDate),
+			}));
+	} catch (e) {
+		console.error("extractActionItems failed:", (e as Error).message);
+		return [];
+	}
+}
+
+// ── Digest Synthesis ────────────────────────────────────────────────
+
+const DIGEST_PROMPT = `Write a 2-3 sentence morning briefing based on the email activity data below. Mention the email count, any urgent items, and key action items. Be concise and helpful. Return ONLY the briefing text, no headers or formatting.`;
+
+export async function synthesizeDigest(ai: Ai, data: Record<string, any>): Promise<string> {
+	const context = JSON.stringify({
+		newEmails: data.newEmailsCount,
+		urgentEmails: (data.topEmails as any[]).filter((e: any) => e.triage_priority >= 4).length,
+		topSubjects: (data.topEmails as any[]).slice(0, 3).map((e: any) => e.subject),
+		pendingActionItems: (data.pendingActions as any[]).map((a: any) => a.description),
+		overdueItems: (data.overdueActions as any[]).length,
+		awaitingReplies: (data.followUps as any[]).length,
+	});
+
+	try {
+		const response = (await ai.run(
+			// @ts-expect-error — model string not in generated union
+			"@cf/moonshotai/kimi-k2.5",
+			{
+				messages: [
+					{ role: "system", content: DIGEST_PROMPT },
+					{ role: "user", content: context },
+				],
+				max_tokens: 200,
+				temperature: 0.3,
+			},
+		)) as { response?: string };
+
+		return response?.response?.trim() ?? "";
+	} catch (e) {
+		console.error("synthesizeDigest failed:", (e as Error).message);
+		return "";
+	}
+}
+
+// ── Email Triage ────────────────────────────────────────────────────
+
+export interface TriageResult {
+	category: "personal" | "business" | "newsletter" | "notification" | "spam" | "other";
+	priority: 1 | 2 | 3 | 4;
+	confidence: number;
+	reason: string;
+}
+
+const TRIAGE_PROMPT = `You are an email triage assistant. Analyze the email and return a JSON object with these fields:
+- category: one of "personal", "business", "newsletter", "notification", "spam", "other"
+- priority: integer 1 (low), 2 (normal), 3 (high), 4 (urgent)
+- confidence: float 0.0-1.0 indicating classification confidence
+- reason: one sentence explaining the classification
+
+Priority guidelines:
+- 4 (urgent): requires immediate action, time-sensitive, from important contact
+- 3 (high): important business communication, action required soon
+- 2 (normal): regular email, newsletters, non-urgent business
+- 1 (low): notifications, automated messages, spam
+
+Return ONLY the JSON object, no other text.`;
+
+const VALID_CATEGORIES = new Set(["personal", "business", "newsletter", "notification", "spam", "other"]);
+
+export async function triageEmail(
+	ai: Ai,
+	email: { subject: string; body: string; sender: string },
+): Promise<TriageResult | null> {
+	const body = stripHtmlToText(email.body || "").slice(0, 2000);
+	const prompt = `From: ${email.sender}\nSubject: ${email.subject}\n\n${body}`;
+
+	try {
+		const response = (await ai.run(
+			// @ts-expect-error — model string not in generated union
+			"@cf/meta/llama-4-scout-17b-16e-instruct",
+			{
+				messages: [
+					{ role: "system", content: TRIAGE_PROMPT },
+					{ role: "user", content: prompt },
+				],
+				max_tokens: 200,
+				temperature: 0,
+			},
+		)) as { response?: string };
+
+		const raw = response?.response?.trim() || "";
+		const jsonMatch = raw.match(/\{[\s\S]*\}/);
+		if (!jsonMatch) return null;
+
+		const parsed = JSON.parse(jsonMatch[0]);
+		const category = VALID_CATEGORIES.has(parsed.category) ? parsed.category : "other";
+		const priority = [1, 2, 3, 4].includes(parsed.priority) ? parsed.priority : 2;
+		const confidence = typeof parsed.confidence === "number"
+			? Math.min(1, Math.max(0, parsed.confidence))
+			: 0.5;
+		const reason = typeof parsed.reason === "string" ? parsed.reason.slice(0, 200) : "";
+
+		return { category, priority, confidence, reason } as TriageResult;
+	} catch (e) {
+		console.error("triageEmail failed:", (e as Error).message);
+		return null;
+	}
+}
+
+// ── Thread Summarization ────────────────────────────────────────────
+
+const SUMMARIZE_PROMPT = `Summarize this email thread in one sentence (max 120 chars). Focus on the topic and current status. Return ONLY the summary, no quotes.`;
+
+export async function summarizeThread(
+	ai: Ai,
+	emails: Array<{ sender: string; subject: string; body: string; date: string }>,
+): Promise<string | null> {
+	const parts = emails.slice(0, 10).map((e) => {
+		const body = stripHtmlToText(e.body || "").slice(0, 200);
+		return `From: ${e.sender}\n${body}`;
+	});
+	const prompt = `Subject: ${emails[0]?.subject || ""}\n\n${parts.join("\n---\n")}`;
+
+	try {
+		const response = (await ai.run(
+			// @ts-expect-error — model string not in generated union
+			"@cf/meta/llama-4-scout-17b-16e-instruct",
+			{
+				messages: [
+					{ role: "system", content: SUMMARIZE_PROMPT },
+					{ role: "user", content: prompt },
+				],
+				max_tokens: 60,
+				temperature: 0,
+			},
+		)) as { response?: string };
+
+		const summary = response?.response?.trim();
+		if (!summary) return null;
+		return summary.slice(0, 120);
+	} catch (e) {
+		console.error("summarizeThread failed:", (e as Error).message);
+		return null;
+	}
+}

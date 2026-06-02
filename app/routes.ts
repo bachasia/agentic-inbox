@@ -13,6 +13,9 @@ export default [
 	route("mailbox/:mailboxId", "routes/mailbox.tsx", [
 		index("routes/mailbox-index.tsx"),
 		route("emails/:folder", "routes/email-list.tsx"),
+		route("snoozed", "routes/snoozed-emails.tsx"),
+		route("scheduled", "routes/scheduled-emails.tsx"),
+		route("priority", "routes/priority-inbox.tsx"),
 		route("settings", "routes/settings.tsx"),
 		route("search", "routes/search-results.tsx"),
 	]),

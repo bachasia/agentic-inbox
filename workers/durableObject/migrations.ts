@@ -168,4 +168,88 @@ export const mailboxMigrations: Migration[] = [
             CREATE INDEX IF NOT EXISTS idx_emails_folder_date ON emails(folder_id, date DESC);
         `,
 	},
+	{
+		name: "9_add_labels",
+		sql: txn(`
+            CREATE TABLE labels (
+                id   TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                color TEXT NOT NULL DEFAULT '#6366f1'
+            );
+            CREATE TABLE email_labels (
+                email_id TEXT NOT NULL,
+                label_id TEXT NOT NULL,
+                PRIMARY KEY (email_id, label_id),
+                FOREIGN KEY (email_id) REFERENCES emails(id) ON DELETE CASCADE,
+                FOREIGN KEY (label_id) REFERENCES labels(id) ON DELETE CASCADE
+            );
+        `),
+	},
+	{
+		name: "10_add_snooze_scheduled_send",
+		sql: txn(`
+            ALTER TABLE emails ADD COLUMN snooze_until TEXT;
+            ALTER TABLE emails ADD COLUMN scheduled_send_at TEXT;
+        `),
+	},
+	{
+		name: "11_add_contacts",
+		sql: txn(`
+            CREATE TABLE contacts (
+                id        TEXT PRIMARY KEY,
+                email     TEXT NOT NULL UNIQUE,
+                name      TEXT,
+                frequency INTEGER NOT NULL DEFAULT 1,
+                last_seen TEXT NOT NULL
+            );
+        `),
+	},
+	{
+		name: "12_add_pending_alarms",
+		sql: txn(`
+            CREATE TABLE pending_alarms (
+                id      TEXT PRIMARY KEY,
+                type    TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                fire_at TEXT NOT NULL
+            );
+        `),
+	},
+	{
+		name: "13_add_phase2_indexes",
+		sql: `
+            CREATE INDEX IF NOT EXISTS idx_email_labels_email   ON email_labels(email_id);
+            CREATE INDEX IF NOT EXISTS idx_email_labels_label   ON email_labels(label_id);
+            CREATE INDEX IF NOT EXISTS idx_contacts_email       ON contacts(email);
+            CREATE INDEX IF NOT EXISTS idx_pending_alarms_fire  ON pending_alarms(fire_at ASC);
+            CREATE INDEX IF NOT EXISTS idx_emails_snooze        ON emails(snooze_until);
+            CREATE INDEX IF NOT EXISTS idx_emails_scheduled     ON emails(scheduled_send_at);
+        `,
+	},
+	{
+		name: "14_add_triage_columns",
+		sql: `
+            ALTER TABLE emails ADD COLUMN triage_category TEXT;
+            ALTER TABLE emails ADD COLUMN triage_priority INTEGER;
+            ALTER TABLE emails ADD COLUMN triage_summary TEXT;
+            ALTER TABLE emails ADD COLUMN triage_confidence REAL;
+            CREATE INDEX IF NOT EXISTS idx_emails_triage_priority ON emails(triage_priority);
+            CREATE INDEX IF NOT EXISTS idx_emails_triage_category ON emails(triage_category);
+        `,
+	},
+	{
+		name: "15_add_action_items",
+		sql: txn(`
+            CREATE TABLE action_items (
+                id           TEXT NOT NULL PRIMARY KEY,
+                email_id     TEXT NOT NULL,
+                description  TEXT NOT NULL,
+                due_date     TEXT,
+                completed_at TEXT,
+                created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX idx_action_items_email   ON action_items(email_id);
+            CREATE INDEX idx_action_items_pending ON action_items(completed_at) WHERE completed_at IS NULL;
+        `),
+	},
 ];

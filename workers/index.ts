@@ -8,6 +8,7 @@ import PostalMime from "postal-mime";
 import { z } from "zod";
 import { sendEmail } from "./email-sender";
 import { storeAttachments, type StoredAttachment } from "./lib/attachments";
+import { notifyNewEmail, testNotification } from "./lib/notifications";
 import {
 	validateSender,
 	SenderValidationError,
@@ -16,6 +17,7 @@ import {
 	listMailboxes,
 } from "./lib/email-helpers";
 import { SendEmailRequestSchema } from "./lib/schemas";
+import { triageEmail, summarizeThread, extractActionItems } from "./lib/ai";
 import { handleReplyEmail, handleForwardEmail } from "./routes/reply-forward";
 import { Folders } from "../shared/folders";
 import type { Env } from "./types";
@@ -108,7 +110,7 @@ app.post("/api/v1/mailboxes", async (c) => {
 	}
 	const key = `mailboxes/${email}.json`;
 	if (await c.env.BUCKET.head(key)) return c.json({ error: "Mailbox already exists" }, 409);
-	const defaultSettings = { fromName: name, forwarding: { enabled: false, email: "" }, signature: { enabled: false, text: "" }, autoReply: { enabled: false, subject: "", message: "" } };
+	const defaultSettings = { fromName: name, forwarding: { enabled: false, email: "" }, signature: { enabled: false, text: "" }, autoReply: { enabled: false, subject: "", message: "" }, notifications: { telegram: { enabled: false, botToken: "", chatId: "" }, discord: { enabled: false, webhookUrl: "" } } };
 	const finalSettings = { ...defaultSettings, ...settings };
 	await c.env.BUCKET.put(key, JSON.stringify(finalSettings));
 	const stub = c.env.MAILBOX.get(c.env.MAILBOX.idFromName(email));
@@ -127,8 +129,26 @@ app.put("/api/v1/mailboxes/:mailboxId", async (c) => {
 	const mailboxId = c.req.param("mailboxId")!;
 	const { settings } = (await c.req.json()) as { settings: Record<string, unknown> };
 	const key = `mailboxes/${mailboxId}.json`;
-	if (!(await c.env.BUCKET.head(key))) return c.json({ error: "Not found" }, 404);
+	const existing = await c.env.BUCKET.get(key);
+	if (!existing) return c.json({ error: "Not found" }, 404);
+	const oldSettings = await existing.json() as Record<string, unknown>;
 	await c.env.BUCKET.put(key, JSON.stringify(settings));
+
+	// Seed or cancel daily digest alarm when digestEnabled changes
+	const stub = c.env.MAILBOX.get(c.env.MAILBOX.idFromName(mailboxId));
+	const wasEnabled = !!(oldSettings as any).digestEnabled;
+	const nowEnabled = !!(settings as any).digestEnabled;
+	try {
+		if (!wasEnabled && nowEnabled) {
+			const digestTime = (settings as any).digestTime ?? "08:00";
+			await (stub as any).seedDigestAlarm(digestTime, mailboxId);
+		} else if (wasEnabled && !nowEnabled) {
+			await (stub as any).cancelDigestAlarm();
+		}
+	} catch (e) {
+		console.error("Digest alarm update failed:", (e as Error).message);
+	}
+
 	return c.json({ id: mailboxId, name: mailboxId, email: mailboxId, settings });
 });
 
@@ -150,14 +170,15 @@ app.get("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 	const limit = intQuery(c, "limit");
 	const sortColumn = c.req.query("sortColumn") as any;
 	const sortDirection = c.req.query("sortDirection") as "ASC" | "DESC" | undefined;
+	const label_id = c.req.query("label_id");
 	const stub = c.var.mailboxStub;
 
 	if (threaded && folder) {
-		const emails = await (stub as any).getThreadedEmails({ folder, page, limit });
+		const emails = await (stub as any).getThreadedEmails({ folder, page, limit, label_id });
 		const totalCount = await (stub as any).countThreadedEmails(folder);
 		return c.json({ emails, totalCount });
 	}
-	const emails = await stub.getEmails({ folder, thread_id, page, limit, sortColumn, sortDirection });
+	const emails = await stub.getEmails({ folder, thread_id, page, limit, sortColumn, sortDirection, label_id } as any);
 	if (folder) {
 		const totalCount = await stub.countEmails({ folder, thread_id });
 		return c.json({ emails, totalCount });
@@ -208,6 +229,25 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 			...(in_reply_to ? { headers: buildThreadingHeaders(in_reply_to, references || []) } : {}),
 		}).catch((e) => console.error("Deferred email delivery failed:", (e as Error).message)),
 	);
+
+	// Schedule unanswered-reply reminder alarm
+	c.executionCtx.waitUntil(
+		(stub as any).scheduleFollowUpReminder(messageId, mailboxId)
+			.catch((e: Error) => console.error("Follow-up reminder schedule failed:", e.message)),
+	);
+
+	// Extract outbound recipients as contacts
+	const allRecipientAddrs = [
+		...(Array.isArray(to) ? to : [to]),
+		...(Array.isArray(cc) ? cc : cc ? [cc] : []),
+		...(Array.isArray(bcc) ? bcc : bcc ? [bcc] : []),
+	].flat().map((addr) => typeof addr === "string" ? addr : (addr as any).email).filter(Boolean);
+	c.executionCtx.waitUntil(
+		Promise.all(allRecipientAddrs.map((addr) =>
+			(stub as any).upsertContact(addr).catch(() => {}),
+		)),
+	);
+
 	return c.json({ id: messageId, status: "sent" }, 202);
 });
 
@@ -296,6 +336,183 @@ app.delete("/api/v1/mailboxes/:mailboxId/folders/:id", async (c: AppContext) => 
 
 // -- Search ---------------------------------------------------------
 
+// -- Labels ---------------------------------------------------------
+
+app.get("/api/v1/mailboxes/:mailboxId/labels", async (c: AppContext) =>
+	c.json(await (c.var.mailboxStub as any).listLabels()));
+
+app.post("/api/v1/mailboxes/:mailboxId/labels", async (c: AppContext) => {
+	const { name, color = "#6366f1" } = await c.req.json() as { name: string; color?: string };
+	if (!name?.trim()) return c.json({ error: "name required" }, 400);
+	const id = slugify(name);
+	if (!id) return c.json({ error: "name must contain alphanumeric chars" }, 400);
+	const label = await (c.var.mailboxStub as any).createLabel(id, name.trim(), color);
+	return label ? c.json(label, 201) : c.json({ error: "Label already exists or limit reached" }, 409);
+});
+
+app.put("/api/v1/mailboxes/:mailboxId/labels/:id", async (c: AppContext) => {
+	const { name, color } = await c.req.json() as { name: string; color: string };
+	const label = await (c.var.mailboxStub as any).updateLabel(c.req.param("id")!, name, color);
+	return label ? c.json(label) : c.json({ error: "Not found" }, 404);
+});
+
+app.delete("/api/v1/mailboxes/:mailboxId/labels/:id", async (c: AppContext) => {
+	const ok = await (c.var.mailboxStub as any).deleteLabel(c.req.param("id")!);
+	return ok ? c.body(null, 204) : c.json({ error: "Not found" }, 404);
+});
+
+app.post("/api/v1/mailboxes/:mailboxId/emails/:id/labels", async (c: AppContext) => {
+	const { labelId } = await c.req.json() as { labelId: string };
+	await (c.var.mailboxStub as any).applyLabel(c.req.param("id")!, labelId);
+	return c.json({ status: "applied" });
+});
+
+app.delete("/api/v1/mailboxes/:mailboxId/emails/:id/labels/:labelId", async (c: AppContext) => {
+	await (c.var.mailboxStub as any).removeLabel(c.req.param("id")!, c.req.param("labelId")!);
+	return c.body(null, 204);
+});
+
+// -- Triage override & priority inbox --------------------------------
+
+app.put("/api/v1/mailboxes/:mailboxId/emails/:id/triage", async (c: AppContext) => {
+	const { category, priority } = await c.req.json() as { category?: string; priority?: number };
+	if (!category && priority == null) return c.json({ error: "category or priority required" }, 400);
+	await (c.var.mailboxStub as any).setEmailTriage(c.req.param("id")!, {
+		category: category ?? "other",
+		priority: priority ?? 2,
+		confidence: 1.0,
+		reason: "Manual override",
+	});
+	return c.json({ status: "updated" });
+});
+
+app.get("/api/v1/mailboxes/:mailboxId/priority-inbox", async (c: AppContext) => {
+	const stub = c.var.mailboxStub as any;
+	const emails = await stub.getPriorityInboxEmails(intQuery(c, "page"), intQuery(c, "limit") ?? 50);
+	const totalCount = await stub.countPriorityInboxEmails();
+	return c.json({ emails, totalCount });
+});
+
+// -- Snooze & scheduled send ----------------------------------------
+
+app.post("/api/v1/mailboxes/:mailboxId/emails/:id/snooze", async (c: AppContext) => {
+	const { until } = await c.req.json() as { until: string };
+	if (!until) return c.json({ error: "until required" }, 400);
+	await (c.var.mailboxStub as any).snoozeEmail(c.req.param("id")!, until);
+	return c.json({ status: "snoozed", until });
+});
+
+app.delete("/api/v1/mailboxes/:mailboxId/emails/:id/snooze", async (c: AppContext) => {
+	await (c.var.mailboxStub as any).unsnoozeEmail(c.req.param("id")!);
+	return c.body(null, 204);
+});
+
+app.post("/api/v1/mailboxes/:mailboxId/emails/:id/schedule", async (c: AppContext) => {
+	const mailboxId = c.req.param("mailboxId")!;
+	const { sendAt } = await c.req.json() as { sendAt: string };
+	await (c.var.mailboxStub as any).scheduleEmail(c.req.param("id")!, sendAt, mailboxId);
+	return c.json({ status: "scheduled", sendAt });
+});
+
+app.delete("/api/v1/mailboxes/:mailboxId/emails/:id/schedule", async (c: AppContext) => {
+	await (c.var.mailboxStub as any).cancelScheduledEmail(c.req.param("id")!);
+	return c.body(null, 204);
+});
+
+app.get("/api/v1/mailboxes/:mailboxId/snoozed", async (c: AppContext) => {
+	const stub = c.var.mailboxStub as any;
+	const emails = await stub.getSnoozedEmails(intQuery(c, "page"), intQuery(c, "limit"));
+	return c.json({ emails, totalCount: emails.length });
+});
+
+app.get("/api/v1/mailboxes/:mailboxId/scheduled", async (c: AppContext) => {
+	const stub = c.var.mailboxStub as any;
+	const emails = await stub.getScheduledEmails(intQuery(c, "page"), intQuery(c, "limit"));
+	return c.json({ emails, totalCount: emails.length });
+});
+
+// -- Contacts -------------------------------------------------------
+
+app.get("/api/v1/mailboxes/:mailboxId/contacts", async (c: AppContext) => {
+	const q = c.req.query("q");
+	const stub = c.var.mailboxStub as any;
+	const contacts = q
+		? await stub.searchContacts(q, 10)
+		: await stub.listContacts(intQuery(c, "page"), intQuery(c, "limit"));
+	return c.json(contacts);
+});
+
+app.put("/api/v1/mailboxes/:mailboxId/contacts/:id", async (c: AppContext) => {
+	const { name } = await c.req.json() as { name: string };
+	const contact = await (c.var.mailboxStub as any).updateContact(c.req.param("id")!, name);
+	return contact ? c.json(contact) : c.json({ error: "Not found" }, 404);
+});
+
+app.delete("/api/v1/mailboxes/:mailboxId/contacts/:id", async (c: AppContext) => {
+	const ok = await (c.var.mailboxStub as any).deleteContact(c.req.param("id")!);
+	return ok ? c.body(null, 204) : c.json({ error: "Not found" }, 404);
+});
+
+// -- Templates (R2-based) ------------------------------------------
+
+interface EmailTemplate { id: string; name: string; subject: string; body: string; }
+
+async function getMailboxTemplates(bucket: R2Bucket, mailboxId: string): Promise<EmailTemplate[] | null> {
+	const obj = await bucket.get(`mailboxes/${mailboxId}.json`);
+	if (!obj) return null;
+	const settings = await obj.json() as Record<string, any>;
+	return (settings.templates as EmailTemplate[]) ?? [];
+}
+
+async function saveTemplates(bucket: R2Bucket, mailboxId: string, templates: EmailTemplate[]) {
+	const obj = await bucket.get(`mailboxes/${mailboxId}.json`);
+	const settings = obj ? await obj.json() as Record<string, any> : {};
+	await bucket.put(`mailboxes/${mailboxId}.json`, JSON.stringify({ ...settings, templates }));
+}
+
+app.get("/api/v1/mailboxes/:mailboxId/templates", async (c) => {
+	const templates = await getMailboxTemplates(c.env.BUCKET, c.req.param("mailboxId")!);
+	if (templates === null) return c.json({ error: "Mailbox not found" }, 404);
+	return c.json(templates);
+});
+
+app.post("/api/v1/mailboxes/:mailboxId/templates", async (c) => {
+	const mailboxId = c.req.param("mailboxId")!;
+	const { name, subject, body } = await c.req.json() as { name: string; subject: string; body: string };
+	const templates = await getMailboxTemplates(c.env.BUCKET, mailboxId);
+	if (templates === null) return c.json({ error: "Mailbox not found" }, 404);
+	if (templates.length >= 50) return c.json({ error: "Max 50 templates" }, 409);
+	const template: EmailTemplate = { id: crypto.randomUUID(), name, subject, body };
+	await saveTemplates(c.env.BUCKET, mailboxId, [...templates, template]);
+	return c.json(template, 201);
+});
+
+app.put("/api/v1/mailboxes/:mailboxId/templates/:id", async (c) => {
+	const mailboxId = c.req.param("mailboxId")!;
+	const id = c.req.param("id")!;
+	const { name, subject, body } = await c.req.json() as { name: string; subject: string; body: string };
+	const templates = await getMailboxTemplates(c.env.BUCKET, mailboxId);
+	if (templates === null) return c.json({ error: "Mailbox not found" }, 404);
+	const idx = templates.findIndex((t) => t.id === id);
+	if (idx === -1) return c.json({ error: "Not found" }, 404);
+	templates[idx] = { id, name, subject, body };
+	await saveTemplates(c.env.BUCKET, mailboxId, templates);
+	return c.json(templates[idx]);
+});
+
+app.delete("/api/v1/mailboxes/:mailboxId/templates/:id", async (c) => {
+	const mailboxId = c.req.param("mailboxId")!;
+	const id = c.req.param("id")!;
+	const templates = await getMailboxTemplates(c.env.BUCKET, mailboxId);
+	if (templates === null) return c.json({ error: "Mailbox not found" }, 404);
+	const filtered = templates.filter((t) => t.id !== id);
+	if (filtered.length === templates.length) return c.json({ error: "Not found" }, 404);
+	await saveTemplates(c.env.BUCKET, mailboxId, filtered);
+	return c.body(null, 204);
+});
+
+// -- Search ---------------------------------------------------------
+
 app.get("/api/v1/mailboxes/:mailboxId/search", async (c: AppContext) => {
 	const searchOpts: Record<string, unknown> = {
 		query: c.req.query("query") || "", folder: c.req.query("folder"), from: c.req.query("from"),
@@ -323,6 +540,81 @@ app.get("/api/v1/mailboxes/:mailboxId/emails/:emailId/attachments/:attachmentId"
 	const sanitized = attachment.filename.replace(/[\x00-\x1f"\\]/g, "_");
 	headers.set("Content-Disposition", `attachment; filename="${sanitized}"; filename*=UTF-8''${encodeURIComponent(attachment.filename)}`);
 	return new Response(obj.body, { headers });
+});
+
+// -- Action items ---------------------------------------------------
+
+app.get("/api/v1/mailboxes/:mailboxId/action-items", async (c: AppContext) => {
+	const pendingOnly = boolQuery(c, "pending") ?? false;
+	const items = await (c.var.mailboxStub as any).listActionItems({ pendingOnly });
+	return c.json(items);
+});
+
+app.patch("/api/v1/mailboxes/:mailboxId/action-items/:itemId", async (c: AppContext) => {
+	const itemId = c.req.param("itemId")!;
+	const { completed } = await c.req.json() as { completed?: boolean };
+	if (completed) {
+		await (c.var.mailboxStub as any).completeActionItem(itemId);
+	}
+	return c.json({ id: itemId, updated: true });
+});
+
+app.delete("/api/v1/mailboxes/:mailboxId/action-items/:itemId", async (c: AppContext) => {
+	const itemId = c.req.param("itemId")!;
+	await (c.var.mailboxStub as any).deleteActionItem(itemId);
+	return c.body(null, 204);
+});
+
+// -- Follow-up reminder cancel -------------------------------------
+
+app.delete("/api/v1/mailboxes/:mailboxId/emails/:emailId/follow-up-reminder", async (c: AppContext) => {
+	const emailId = c.req.param("emailId")!;
+	await (c.var.mailboxStub as any).cancelFollowUpReminder(emailId);
+	return c.body(null, 204);
+});
+
+// -- Notification test ----------------------------------------------
+
+app.post("/api/v1/mailboxes/:mailboxId/test-notification", async (c: AppContext) => {
+	const { provider, settings } = await c.req.json() as {
+		provider: "telegram" | "discord";
+		settings: Record<string, string>;
+	};
+	const result = await testNotification(provider, settings);
+	return c.json(result);
+});
+
+// -- Signature images -----------------------------------------------
+
+const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/svg+xml", "image/webp"];
+const MAX_SIGNATURE_IMAGE_SIZE = 500 * 1024;
+
+app.post("/api/v1/mailboxes/:mailboxId/signature-image", async (c: AppContext) => {
+	const mailboxId = c.req.param("mailboxId")!;
+	const formData = await c.req.formData();
+	const file = formData.get("file") as File | null;
+	if (!file) return c.json({ error: "No file provided" }, 400);
+	if (!ALLOWED_IMAGE_TYPES.includes(file.type)) return c.json({ error: "Invalid file type" }, 400);
+	if (file.size > MAX_SIGNATURE_IMAGE_SIZE) return c.json({ error: "File too large (max 500KB)" }, 400);
+	const filename = `${crypto.randomUUID()}-${file.name.replace(/[^\w.-]/g, "_")}`;
+	await c.env.BUCKET.put(`signatures/${mailboxId}/${filename}`, file.stream(), {
+		httpMetadata: { contentType: file.type },
+	});
+	const url = `/api/v1/mailboxes/${mailboxId}/signature-image/${filename}`;
+	return c.json({ url, filename });
+});
+
+app.get("/api/v1/mailboxes/:mailboxId/signature-image/:filename", async (c) => {
+	const mailboxId = c.req.param("mailboxId")!;
+	const filename = c.req.param("filename")!;
+	const obj = await c.env.BUCKET.get(`signatures/${mailboxId}/${filename}`);
+	if (!obj) return c.json({ error: "Not found" }, 404);
+	return new Response(obj.body, {
+		headers: {
+			"Content-Type": obj.httpMetadata?.contentType || "image/png",
+			"Cache-Control": "public, max-age=31536000",
+		},
+	});
 });
 
 // -- Receive inbound email ------------------------------------------
@@ -364,7 +656,9 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 	if (!mailboxId) throw new Error("received email with no valid recipient address");
 
 	const messageId = crypto.randomUUID();
-	if (!(await env.BUCKET.head(`mailboxes/${mailboxId}.json`))) { console.log(`Ignoring email for ${mailboxId}: mailbox does not exist`); return; }
+	const settingsObj = await env.BUCKET.get(`mailboxes/${mailboxId}.json`);
+	if (!settingsObj) { console.log(`Ignoring email for ${mailboxId}: mailbox does not exist`); return; }
+	const mailboxSettings = await settingsObj.json() as Record<string, any>;
 
 	const stub = env.MAILBOX.get(env.MAILBOX.idFromName(mailboxId));
 
@@ -401,6 +695,81 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 		in_reply_to: inReplyTo, email_references: emailReferences.length > 0 ? JSON.stringify(emailReferences) : null,
 		thread_id: threadId, message_id: originalMessageId, raw_headers: JSON.stringify(parsedEmail.headers),
 	}, attachmentData);
+
+	// Extract sender as contact (skip automated senders)
+	const NOREPLY_PATTERNS = /noreply|no-reply|donotreply|mailer-daemon|bounce|notifications?@|alerts?@/i;
+	const senderAddr = (parsedEmail.from?.address || "").toLowerCase();
+	if (senderAddr && !NOREPLY_PATTERNS.test(senderAddr)) {
+		ctx.waitUntil(
+			(stub as any).upsertContact(senderAddr, parsedEmail.from?.name || undefined)
+				.catch((e: Error) => console.error("Contact upsert failed:", e.message)),
+		);
+	}
+
+	// Triage + thread summarization (fail-open: email still arrives if this fails)
+	ctx.waitUntil((async () => {
+		try {
+			const triage = await triageEmail(env.AI, {
+				subject: parsedEmail.subject || "",
+				body: parsedEmail.html || parsedEmail.text || "",
+				sender: senderAddr,
+			});
+			if (!triage) return;
+
+			await (stub as any).setEmailTriage(messageId, triage);
+
+			const labelId = await (stub as any).ensureSystemLabel(triage.category);
+			if (labelId) {
+				await (stub as any).applyLabel(messageId, labelId);
+			}
+
+			if (triage.category === "spam" && triage.confidence > 0.85) {
+				await stub.moveEmail(messageId, "spam");
+			}
+
+			// Thread summarization for threads with 3+ messages
+			if (threadId && threadId !== messageId) {
+				const threadCount = await (stub as any).countThreadEmails(threadId);
+				if (threadCount >= 3) {
+					const threadEmails = await (stub as any).getThreadEmails(threadId);
+					if (Array.isArray(threadEmails) && threadEmails.length >= 3) {
+						const summary = await summarizeThread(env.AI, threadEmails);
+						if (summary) await (stub as any).setThreadSummary(messageId, summary);
+					}
+				}
+			}
+		} catch (e) {
+			console.error("Triage failed:", (e as Error).message);
+		}
+	})());
+
+	ctx.waitUntil(
+		notifyNewEmail(mailboxSettings.notifications, {
+			sender: (parsedEmail.from?.address || "").toLowerCase(),
+			senderName: parsedEmail.from?.name || undefined,
+			subject: parsedEmail.subject || "(no subject)",
+			mailboxId,
+		}).catch((e: Error) => console.error("Notification failed:", e.message)),
+	);
+
+	// Extract action items (fail-open: skip newsletters/notifications/spam)
+	ctx.waitUntil((async () => {
+		try {
+			const triage = await (stub as any).getEmailTriage(messageId);
+			const skipCategories = new Set(["newsletter", "notification", "spam"]);
+			if (triage?.triage_category && skipCategories.has(triage.triage_category)) return;
+			const items = await extractActionItems(env.AI, {
+				subject: parsedEmail.subject || "",
+				body: parsedEmail.html || parsedEmail.text || "",
+				sender: (parsedEmail.from?.address || "").toLowerCase(),
+			});
+			for (const item of items) {
+				await (stub as any).createActionItem({ emailId: messageId, description: item.description, dueDate: item.dueDate });
+			}
+		} catch (e) {
+			console.error("Action item extraction failed:", (e as Error).message);
+		}
+	})());
 
 	const agentStub = env.EMAIL_AGENT.get(env.EMAIL_AGENT.idFromName(mailboxId));
 	ctx.waitUntil(agentStub.fetch(new Request("https://agents/onNewEmail", {

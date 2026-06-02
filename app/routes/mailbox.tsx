@@ -8,13 +8,26 @@ import AgentSidebar from "~/components/AgentSidebar";
 import ComposeEmail from "~/components/ComposeEmail";
 import Header from "~/components/Header";
 import Sidebar from "~/components/Sidebar";
+import { ShortcutsHelpModal } from "~/components/ShortcutsHelpModal";
 import { useMailbox } from "~/queries/mailboxes";
+import { useFolders } from "~/queries/folders";
 import { useUIStore } from "~/hooks/useUIStore";
+import { useKeyboardShortcuts } from "~/hooks/useKeyboardShortcuts";
+import { Folders } from "shared/folders";
 
 export default function MailboxRoute() {
 	const { mailboxId } = useParams<{ mailboxId: string }>();
 	// Prefetch mailbox data for child components
 	useMailbox(mailboxId);
+
+	const { data: folders } = useFolders(mailboxId);
+	const inboxUnread = folders?.find((f) => f.id === Folders.INBOX)?.unreadCount ?? 0;
+
+	useEffect(() => {
+		document.title = inboxUnread > 0 ? `(${inboxUnread}) Agentic Inbox` : "Agentic Inbox";
+		return () => { document.title = "Agentic Inbox"; };
+	}, [inboxUnread]);
+
 	const prevMailboxIdRef = useRef<string | undefined>(undefined);
 	const {
 		isSidebarOpen,
@@ -23,6 +36,8 @@ export default function MailboxRoute() {
 		closePanel,
 		closeComposeModal,
 	} = useUIStore();
+
+	useKeyboardShortcuts(mailboxId);
 
 	useEffect(() => {
 		if (
@@ -77,6 +92,7 @@ export default function MailboxRoute() {
 			)}
 
 			<ComposeEmail />
+			<ShortcutsHelpModal />
 		</div>
 	);
 }

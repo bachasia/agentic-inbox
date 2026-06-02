@@ -8,9 +8,13 @@ import {
 	CaretLeftIcon,
 	FileIcon,
 	FolderIcon,
+	HourglassIcon,
+	LightningIcon,
 	PaperPlaneTiltIcon,
 	PencilSimpleIcon,
 	PlusIcon,
+	TagIcon,
+	TimerIcon,
 	TrashIcon,
 	TrayIcon,
 } from "@phosphor-icons/react";
@@ -18,6 +22,7 @@ import { useMemo, useState } from "react";
 import { NavLink, useNavigate, useParams } from "react-router";
 import { Folders, SYSTEM_FOLDER_IDS } from "shared/folders";
 import { useCreateFolder, useFolders } from "~/queries/folders";
+import { useLabels } from "~/queries/labels";
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
 
@@ -82,6 +87,8 @@ export default function Sidebar() {
 	const { data: currentMailbox } = useMailbox(mailboxId);
 	const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
 	const [newFolderName, setNewFolderName] = useState("");
+
+	const { data: labels = [] } = useLabels(mailboxId);
 
 	const customFolders = useMemo(
 		() =>
@@ -159,6 +166,12 @@ export default function Sidebar() {
 
 			{/* Navigation */}
 			<nav className="flex-1 overflow-y-auto px-2 space-y-0.5">
+				<FolderLink
+					to={`/mailbox/${mailboxId}/priority`}
+					icon={<LightningIcon size={18} weight="fill" className="text-kumo-warning" />}
+					label="Priority Inbox"
+					onClick={handleNavClick}
+				/>
 				{SYSTEM_FOLDER_LINKS.map((folder) => (
 					<FolderLink
 						key={folder.id}
@@ -219,6 +232,55 @@ export default function Sidebar() {
 								/>
 							</Tooltip>
 						</div>
+					</div>
+				)}
+
+				{/* Virtual folders: Snoozed + Scheduled */}
+				<div className="pt-5">
+					<div className="px-3 mb-1.5">
+						<span className="text-xs uppercase tracking-wider font-semibold text-kumo-subtle">
+							Time-based
+						</span>
+					</div>
+					<FolderLink
+						to={`/mailbox/${mailboxId}/snoozed`}
+						icon={<HourglassIcon size={18} weight="regular" />}
+						label="Snoozed"
+						onClick={handleNavClick}
+					/>
+					<FolderLink
+						to={`/mailbox/${mailboxId}/scheduled`}
+						icon={<TimerIcon size={18} weight="regular" />}
+						label="Scheduled"
+						onClick={handleNavClick}
+					/>
+				</div>
+
+				{/* Labels */}
+				{labels.length > 0 && (
+					<div className="pt-5">
+						<div className="px-3 mb-1.5">
+							<span className="text-xs uppercase tracking-wider font-semibold text-kumo-subtle">
+								Labels
+							</span>
+						</div>
+						{labels.map((label) => (
+							<NavLink
+								key={label.id}
+								to={`/mailbox/${mailboxId}/emails/inbox?label=${label.id}`}
+								onClick={handleNavClick}
+								className={({ isActive }) =>
+									`flex items-center gap-3 py-2 px-3 rounded-md text-sm transition-colors ${
+										isActive
+											? "bg-kumo-fill font-semibold text-kumo-default"
+											: "text-kumo-strong hover:bg-kumo-tint"
+									}`
+								}
+							>
+								<span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
+								<span className="truncate flex-1">{label.name}</span>
+							</NavLink>
+						))}
 					</div>
 				)}
 			</nav>

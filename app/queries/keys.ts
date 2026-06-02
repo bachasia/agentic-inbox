@@ -24,4 +24,19 @@ export const queryKeys = {
 			["search", mailboxId, query, page] as const,
 	},
 	config: ["config"] as const,
+	labels: {
+		list: (mailboxId: string) => ["mailboxes", mailboxId, "labels"] as const,
+	},
+	contacts: {
+		list: (mailboxId: string, q?: string) => ["mailboxes", mailboxId, "contacts", q ?? ""] as const,
+	},
+	templates: {
+		list: (mailboxId: string) => ["mailboxes", mailboxId, "templates"] as const,
+	},
+	priorityInbox: {
+		list: (mailboxId: string) => ["mailboxes", mailboxId, "priority-inbox"] as const,
+	},
+	actionItems: {
+		list: (mailboxId: string) => ["mailboxes", mailboxId, "action-items"] as const,
+	},
 };

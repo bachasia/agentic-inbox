@@ -20,6 +20,8 @@ import {
 	XIcon,
 } from "@phosphor-icons/react";
 import type { Folder, Email } from "~/types";
+import { LabelPicker } from "~/components/LabelPicker";
+import { SnoozePicker } from "~/components/SnoozePicker";
 
 interface EmailPanelToolbarProps {
 	email: Email;
@@ -157,6 +159,13 @@ export default function EmailPanelToolbar({
 			</Tooltip>
 
 			<MoveToFolderMenu folders={moveToFolders} onMove={onMove} />
+
+			{!isDraftFolder && mailboxId && (
+				<>
+					<LabelPicker mailboxId={mailboxId} email={email} />
+					<SnoozePicker mailboxId={mailboxId} emailId={email.id} snoozeUntil={email.snooze_until} />
+				</>
+			)}
 
 			<div className="ml-auto flex items-center gap-0.5">
 				<Tooltip content="View source" side="bottom" asChild>

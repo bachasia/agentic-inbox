@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, primaryKey } from "drizzle-orm/sqlite-core";
 
 export const folders = sqliteTable("folders", {
 	id: text("id").primaryKey(),
@@ -29,6 +29,47 @@ export const emails = sqliteTable("emails", {
 	thread_id: text("thread_id"),
 	message_id: text("message_id"),
 	raw_headers: text("raw_headers"),
+	snooze_until: text("snooze_until"),
+	scheduled_send_at: text("scheduled_send_at"),
+	triage_category: text("triage_category"),
+	triage_priority: integer("triage_priority"),
+	triage_summary: text("triage_summary"),
+	triage_confidence: real("triage_confidence"),
+});
+
+export const labels = sqliteTable("labels", {
+	id:    text("id").primaryKey(),
+	name:  text("name").notNull().unique(),
+	color: text("color").notNull().default("#6366f1"),
+});
+
+export const emailLabels = sqliteTable("email_labels", {
+	email_id: text("email_id").notNull().references(() => emails.id, { onDelete: "cascade" }),
+	label_id: text("label_id").notNull().references(() => labels.id, { onDelete: "cascade" }),
+}, (t) => ({ pk: primaryKey({ columns: [t.email_id, t.label_id] }) }));
+
+export const contacts = sqliteTable("contacts", {
+	id:        text("id").primaryKey(),
+	email:     text("email").notNull().unique(),
+	name:      text("name"),
+	frequency: integer("frequency").notNull().default(1),
+	last_seen: text("last_seen").notNull(),
+});
+
+export const pendingAlarms = sqliteTable("pending_alarms", {
+	id:      text("id").primaryKey(),
+	type:    text("type").notNull(),
+	payload: text("payload").notNull(),
+	fire_at: text("fire_at").notNull(),
+});
+
+export const actionItems = sqliteTable("action_items", {
+	id:          text("id").primaryKey(),
+	email_id:    text("email_id").notNull(),
+	description: text("description").notNull(),
+	due_date:    text("due_date"),
+	completed_at: text("completed_at"),
+	created_at:  text("created_at").notNull(),
 });
 
 export const attachments = sqliteTable("attachments", {

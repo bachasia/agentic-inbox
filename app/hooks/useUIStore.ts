@@ -37,6 +37,11 @@ interface UIState {
 	isAgentPanelOpen: boolean;
 	toggleAgentPanel: () => void;
 
+	// Keyboard shortcuts help modal
+	isShortcutsModalOpen: boolean;
+	openShortcutsModal: () => void;
+	closeShortcutsModal: () => void;
+
 	// Legacy dialog support (kept for non-split views)
 	isComposeModalOpen: boolean;
 	openComposeModal: (options?: ComposeOptions) => void;
@@ -51,6 +56,7 @@ export const useUIStore = create<UIState>((set, get) => ({
 	isComposeModalOpen: false,
 	isSidebarOpen: false,
 	isAgentPanelOpen: true,
+	isShortcutsModalOpen: false,
 
 	selectEmail: (id) => set({ selectedEmailId: id, isComposing: false }),
 
@@ -83,6 +89,9 @@ export const useUIStore = create<UIState>((set, get) => ({
 	toggleSidebar: () => set({ isSidebarOpen: !get().isSidebarOpen }),
 
 	toggleAgentPanel: () => set({ isAgentPanelOpen: !get().isAgentPanelOpen }),
+
+	openShortcutsModal: () => set({ isShortcutsModalOpen: true }),
+	closeShortcutsModal: () => set({ isShortcutsModalOpen: false }),
 
 	openComposeModal: (options) =>
 		set({

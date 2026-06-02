@@ -467,6 +467,28 @@ export async function toolSendReply(
 	return { status: "sent", messageId, message: `Reply sent to ${params.to}` };
 }
 
+// ── get_action_items ───────────────────────────────────────────────
+
+export async function toolGetActionItems(
+	env: Env,
+	mailboxId: string,
+	params: { pendingOnly?: boolean },
+) {
+	const stub = getMailboxStub(env, mailboxId);
+	return (stub as any).listActionItems({ pendingOnly: params.pendingOnly ?? true });
+}
+
+// ── get_pending_follow_ups ─────────────────────────────────────────
+
+export async function toolGetPendingFollowUps(
+	env: Env,
+	mailboxId: string,
+	params: { days?: number },
+) {
+	const stub = getMailboxStub(env, mailboxId);
+	return (stub as any).getPendingFollowUps(params.days ?? 3);
+}
+
 // ── send_email ─────────────────────────────────────────────────────
 
 export async function toolSendEmail(

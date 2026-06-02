@@ -18,15 +18,18 @@ import {
 } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
 import { Folders } from "shared/folders";
 import { formatListDate } from "shared/dates";
 import MailboxSplitView from "~/components/MailboxSplitView";
+import { LabelBadge } from "~/components/LabelBadge";
+import { SwipeableEmailRow } from "~/components/SwipeableEmailRow";
 import { getSnippetText } from "~/lib/utils";
 import {
 	useDeleteEmail,
 	useEmails,
 	useMarkThreadRead,
+	useMoveEmail,
 	useUpdateEmail,
 } from "~/queries/emails";
 import { useFolders } from "~/queries/folders";
@@ -153,19 +156,23 @@ export default function EmailListRoute() {
 		startCompose,
 	} = useUIStore();
 	const [page, setPage] = useState(1);
+	const [searchParams] = useSearchParams();
+	const labelId = searchParams.get("label") ?? undefined;
 
 	const queryClient = useQueryClient();
 	const updateEmail = useUpdateEmail();
 	const markThreadRead = useMarkThreadRead();
 	const deleteEmail = useDeleteEmail();
+	const moveEmail = useMoveEmail();
 
 	const params = useMemo(
 		() => ({
 			folder: folder || "",
 			page: String(page),
 			limit: String(PAGE_SIZE),
+			...(labelId ? { label_id: labelId } : {}),
 		}),
-		[folder, page],
+		[folder, page, labelId],
 	);
 
 	const {
@@ -317,8 +324,16 @@ export default function EmailListRoute() {
 								const isSelected = selectedEmailId === email.id;
 								const snippet = getSnippetText(email.snippet);
 								return (
-									<div
+									<SwipeableEmailRow
 										key={email.id}
+										onSwipeRight={() => mailboxId && moveEmail.mutate({ mailboxId, id: email.id, folderId: "archive" })}
+										onSwipeLeft={() => {
+											if (mailboxId && window.confirm("Delete this email?")) {
+												moveEmail.mutate({ mailboxId, id: email.id, folderId: "trash" });
+											}
+										}}
+									>
+									<div
 										role="button"
 										tabIndex={0}
 										onClick={() => handleRowClick(email)}
@@ -328,10 +343,17 @@ export default function EmailListRoute() {
 												handleRowClick(email);
 											}
 										}}
-										className={`group flex items-center gap-3 w-full text-left cursor-pointer transition-colors border-b border-kumo-line px-4 py-2.5 md:px-6 md:py-3 ${
-											isPanelOpen ? "md:px-4 md:py-2.5" : ""
-										} ${isSelected ? "bg-kumo-tint" : "hover:bg-kumo-tint"}`}
+										className={`group flex items-stretch gap-0 w-full text-left cursor-pointer transition-colors border-b border-kumo-line ${
+											isSelected ? "bg-kumo-tint" : "hover:bg-kumo-tint"
+										}`}
 									>
+									{/* Priority band: 3px left border for priority 3+ */}
+									{email.triage_priority && email.triage_priority >= 3 && (
+										<div className={`w-[3px] shrink-0 self-stretch ${email.triage_priority >= 4 ? "bg-red-500" : "bg-orange-400"}`} />
+									)}
+									<div className={`flex items-center gap-3 flex-1 px-4 py-2.5 md:py-3 ${
+										isPanelOpen ? "md:px-4 md:py-2.5" : "md:px-6"
+									}`}>
 										{/* Unread dot */}
 										<div className="w-2.5 shrink-0 flex justify-center">
 											{hasUnread(email) && (
@@ -384,7 +406,12 @@ export default function EmailListRoute() {
 														</span>
 													</Tooltip>
 												)}
-												<span className="text-sm text-kumo-subtle shrink-0 ml-auto">
+												<span className="text-sm text-kumo-subtle shrink-0 ml-auto flex items-center gap-1.5">
+													{email.triage_category && (
+														<span className="text-xs bg-kumo-fill rounded px-1.5 py-0.5 capitalize hidden sm:inline">
+															{email.triage_category}
+														</span>
+													)}
 													{formatListDate(email.date)}
 												</span>
 											</div>
@@ -400,7 +427,31 @@ export default function EmailListRoute() {
 												</span>
 											)}
 										</div>
-									</div>
+									{/* Thread summary */}
+									{email.triage_summary && (email.thread_count ?? 1) >= 3 && (
+										<div className="text-xs text-kumo-subtle italic mt-0.5 truncate">
+											{email.triage_summary}
+										</div>
+									)}
+									{/* Label badges */}
+									{email.labels && email.labels.length > 0 && (
+										<div className="flex items-center gap-1 mt-1 flex-wrap">
+											{email.labels.map((label) => (
+												<LabelBadge key={label.id} label={label} size="xs" />
+											))}
+										</div>
+									)}
+									{email.snooze_until && (
+										<div className="mt-1 text-xs text-kumo-accent">
+											Snoozed until {new Date(email.snooze_until).toLocaleString()}
+										</div>
+									)}
+									{email.scheduled_send_at && (
+										<div className="mt-1 text-xs text-kumo-subtle">
+											Sends at {new Date(email.scheduled_send_at).toLocaleString()}
+										</div>
+									)}
+								</div>
 
 										{/* Hover actions */}
 										<div className="hidden group-hover:flex items-center shrink-0">
@@ -433,7 +484,9 @@ export default function EmailListRoute() {
 												/>
 											</Tooltip>
 										</div>
+									</div>{/* end inner flex row */}
 									</div>
+									</SwipeableEmailRow>
 								);
 							})}
 						</div>

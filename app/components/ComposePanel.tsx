@@ -3,9 +3,14 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { Banner, Button, Input } from "@cloudflare/kumo";
-import { FloppyDiskIcon, PaperPlaneTiltIcon, XIcon } from "@phosphor-icons/react";
+import { CalendarIcon, FloppyDiskIcon, PaperPlaneTiltIcon, XIcon } from "@phosphor-icons/react";
+import { useState } from "react";
 import { useParams } from "react-router";
 import { useComposeForm } from "~/hooks/useComposeForm";
+import { ContactAutocomplete } from "~/components/ContactAutocomplete";
+import { useTemplates } from "~/queries/templates";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import api from "~/services/api";
 import RichTextEditor from "./RichTextEditor";
 
 export default function ComposePanel() {
@@ -37,6 +42,37 @@ export default function ComposePanel() {
 		closePanel,
 	} = useComposeForm(mailboxId, folder);
 
+	const { data: templates = [] } = useTemplates(mailboxId);
+	const [scheduledAt, setScheduledAt] = useState("");
+	const [showScheduled, setShowScheduled] = useState(false);
+	const qc = useQueryClient();
+
+	const scheduleMut = useMutation({
+		mutationFn: async ({ draftId, sendAt }: { draftId: string; sendAt: string }) => {
+			if (!mailboxId) return;
+			await api.scheduleEmail(mailboxId, draftId, sendAt);
+		},
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: ["emails", mailboxId] });
+			closePanel();
+		},
+	});
+
+	const applyTemplate = (templateId: string) => {
+		const t = templates.find((tmpl) => tmpl.id === templateId);
+		if (!t) return;
+		if (!subject) setSubject(t.subject);
+		setBody(t.body);
+	};
+
+	const handleScheduledSend = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!scheduledAt || !mailboxId) return;
+		const result = await api.saveDraft(mailboxId, { to, cc, bcc, subject, body });
+		const draftId = (result as any).id;
+		if (draftId) scheduleMut.mutate({ draftId, sendAt: new Date(scheduledAt).toISOString() });
+	};
+
 	return (
 		<div className="flex flex-col h-full bg-kumo-base">
 			<div className="flex items-center justify-between px-4 py-3 border-b border-kumo-line shrink-0 md:px-6">
@@ -63,20 +99,45 @@ export default function ComposePanel() {
 				<div className="p-4 md:p-6 space-y-4">
 					{error && <Banner variant="error" text={error} />}
 
+					{/* Template picker */}
+					{mailboxId && templates.length > 0 && (
+						<div className="flex items-center gap-2">
+							<select
+								onChange={(e) => { applyTemplate(e.target.value); e.target.value = ""; }}
+								className="text-sm border border-kumo-line rounded px-2 py-1 bg-kumo-base text-kumo-subtle w-full"
+							>
+								<option value="">Use template...</option>
+								{templates.map((t) => (
+									<option key={t.id} value={t.id}>{t.name}</option>
+								))}
+							</select>
+						</div>
+					)}
+
 					<div className="space-y-3">
 						<div className="flex items-center gap-2">
 							<label className="text-sm font-medium text-kumo-subtle w-14 shrink-0">
 								To
 							</label>
 							<div className="flex-1 flex items-center gap-2 min-w-0">
-								<Input
-									type="text"
-									placeholder="recipient@example.com"
-									size="sm"
-									value={to}
-									onChange={(e) => setTo(e.target.value)}
-									required
-								/>
+								{mailboxId ? (
+									<ContactAutocomplete
+										label=""
+										value={to}
+										onChange={setTo}
+										mailboxId={mailboxId}
+										placeholder="recipient@example.com"
+									/>
+								) : (
+									<Input
+										type="text"
+										placeholder="recipient@example.com"
+										size="sm"
+										value={to}
+										onChange={(e) => setTo(e.target.value)}
+										required
+									/>
+								)}
 								{!showCcBcc && (
 									<button
 										type="button"
@@ -95,13 +156,11 @@ export default function ComposePanel() {
 									CC
 								</label>
 								<div className="flex-1">
-									<Input
-										type="text"
-										size="sm"
-										value={cc}
-										onChange={(e) => setCc(e.target.value)}
-										placeholder="Separate multiple addresses with commas"
-									/>
+									{mailboxId ? (
+										<ContactAutocomplete label="" value={cc} onChange={setCc} mailboxId={mailboxId} placeholder="Separate multiple addresses with commas" />
+									) : (
+										<Input type="text" size="sm" value={cc} onChange={(e) => setCc(e.target.value)} placeholder="Separate multiple addresses with commas" />
+									)}
 								</div>
 							</div>
 						)}
@@ -112,13 +171,11 @@ export default function ComposePanel() {
 									BCC
 								</label>
 								<div className="flex-1">
-									<Input
-										type="text"
-										size="sm"
-										value={bcc}
-										onChange={(e) => setBcc(e.target.value)}
-										placeholder="Separate multiple addresses with commas"
-									/>
+									{mailboxId ? (
+										<ContactAutocomplete label="" value={bcc} onChange={setBcc} mailboxId={mailboxId} placeholder="Separate multiple addresses with commas" />
+									) : (
+										<Input type="text" size="sm" value={bcc} onChange={(e) => setBcc(e.target.value)} placeholder="Separate multiple addresses with commas" />
+									)}
 								</div>
 							</div>
 						)}
@@ -150,10 +207,41 @@ export default function ComposePanel() {
 
 				{/* Footer actions */}
 				<div className="mt-auto px-4 py-3 border-t border-kumo-line bg-kumo-fill/30 shrink-0 md:px-6">
+					{showScheduled && (
+						<div className="flex items-center gap-2 mb-3">
+							<input
+								type="datetime-local"
+								value={scheduledAt}
+								onChange={(e) => setScheduledAt(e.target.value)}
+								className="flex-1 text-sm border border-kumo-line rounded px-2 py-1 bg-kumo-base text-kumo-default"
+							/>
+							<Button
+								type="button"
+								variant="primary"
+								size="sm"
+								disabled={!scheduledAt || scheduleMut.isPending}
+								loading={scheduleMut.isPending}
+								onClick={handleScheduledSend}
+								icon={<CalendarIcon size={14} />}
+							>
+								Schedule
+							</Button>
+						</div>
+					)}
 					<div className="flex items-center justify-between">
-						<Button type="button" variant="ghost" size="sm" onClick={closeCompose} disabled={isSending}>
-							Discard
-						</Button>
+						<div className="flex items-center gap-2">
+							<Button type="button" variant="ghost" size="sm" onClick={closeCompose} disabled={isSending}>
+								Discard
+							</Button>
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								icon={<CalendarIcon size={14} />}
+								onClick={() => setShowScheduled((v) => !v)}
+								aria-label="Schedule send"
+							/>
+						</div>
 						<div className="flex items-center gap-2">
 							<Button
 								type="button"

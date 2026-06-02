@@ -10,6 +10,18 @@ import * as schema from "../db/schema";
 import { Folders } from "../../shared/folders";
 import type { Env } from "../types";
 import { applyMigrations, mailboxMigrations } from "./migrations";
+import { sendEmail } from "../email-sender";
+import { sendReminderNotification, sendDigestNotification } from "../lib/notifications";
+import { synthesizeDigest } from "../lib/ai";
+
+function nextDigestFireAt(digestTime: string): string {
+	const [h, m] = digestTime.split(":").map(Number);
+	const now = new Date();
+	const next = new Date(now);
+	next.setUTCHours(h ?? 8, m ?? 0, 0, 0);
+	if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+	return next.toISOString();
+}
 
 /**
  * SQL expression to normalize email subjects by stripping common
@@ -69,6 +81,7 @@ interface GetEmailsOptions {
 	limit?: number;
 	sortColumn?: SortColumn;
 	sortDirection?: "ASC" | "DESC";
+	label_id?: string;
 }
 
 interface EmailData {
@@ -119,6 +132,7 @@ export class MailboxDO extends DurableObject<Env> {
 			limit: rawLimit = 25,
 			sortColumn: rawSortColumn = "date",
 			sortDirection = "DESC",
+			label_id,
 		} = options;
 
 		// Cap pagination limit to prevent unbounded queries
@@ -141,6 +155,13 @@ export class MailboxDO extends DurableObject<Env> {
 		if (thread_id) {
 			conditions.push(eq(schema.emails.thread_id, thread_id));
 		}
+		// Exclude snoozed emails from inbox view
+		if (folder === Folders.INBOX || folder === "inbox") {
+			conditions.push(sql`(${schema.emails.snooze_until} IS NULL OR ${schema.emails.snooze_until} <= datetime('now'))`);
+		}
+		if (label_id) {
+			conditions.push(sql`${schema.emails.id} IN (SELECT email_id FROM email_labels WHERE label_id = ${label_id})`);
+		}
 
 		const orderCol = SORT_COLUMN_MAP[sortColumn];
 		const orderDir = sortDirection === "ASC" ? asc(orderCol) : desc(orderCol);
@@ -160,6 +181,10 @@ export class MailboxDO extends DurableObject<Env> {
 				email_references: schema.emails.email_references,
 				thread_id: schema.emails.thread_id,
 				folder_id: schema.emails.folder_id,
+				triage_category: schema.emails.triage_category,
+				triage_priority: schema.emails.triage_priority,
+				triage_summary: schema.emails.triage_summary,
+				triage_confidence: schema.emails.triage_confidence,
 				snippet: sql<string>`SUBSTR(${schema.emails.body}, 1, 300)`,
 			})
 			.from(schema.emails)
@@ -194,6 +219,10 @@ export class MailboxDO extends DurableObject<Env> {
 		if (thread_id) {
 			conditions.push(`thread_id = ?${params.length + 1}`);
 			params.push(thread_id);
+		}
+
+		if (folder === Folders.INBOX || folder === "inbox") {
+			conditions.push("(snooze_until IS NULL OR snooze_until <= datetime('now'))");
 		}
 
 		const where =
@@ -267,6 +296,7 @@ export class MailboxDO extends DurableObject<Env> {
 					lp.id, lp.subject, lp.sender, lp.recipient, lp.date,
 					lp.read, lp.starred, lp.thread_id, lp.folder_id,
 					lp.in_reply_to, lp.email_references,
+					lp.triage_category, lp.triage_priority, lp.triage_summary, lp.triage_confidence,
 					SUBSTR(lp.body, 1, 300) as snippet,
 					ds.thread_count, ds.thread_unread_count, ds.participants
 				FROM latest_per_group lp
@@ -289,6 +319,10 @@ export class MailboxDO extends DurableObject<Env> {
 		}
 
 		// Non-draft folders: full threading logic
+		const snoozeCond = (folder === Folders.INBOX || folder === "inbox")
+			? "AND (snooze_until IS NULL OR snooze_until <= datetime('now'))"
+			: "";
+
 		const result = this.ctx.storage.sql.exec(
 			`WITH
 			folder_emails AS (
@@ -297,6 +331,7 @@ export class MailboxDO extends DurableObject<Env> {
 					${NORMALIZED_SUBJECT_SQL} as normalized_subject
 				FROM emails
 				WHERE folder_id = (SELECT id FROM folders WHERE name = ?1 OR id = ?1 LIMIT 1)
+				${snoozeCond}
 			),
 			thread_to_conversation AS (
 				SELECT
@@ -355,6 +390,7 @@ export class MailboxDO extends DurableObject<Env> {
 				lif.id, lif.subject, lif.sender, lif.recipient, lif.date,
 				lif.read, lif.starred, lif.thread_id, lif.folder_id,
 				lif.in_reply_to, lif.email_references,
+				lif.triage_category, lif.triage_priority, lif.triage_summary, lif.triage_confidence,
 				SUBSTR(lif.body, 1, 300) as snippet,
 				cs.thread_count, cs.thread_unread_count, cs.participants,
 				CASE WHEN lmc.folder_id != (SELECT id FROM folders WHERE name = 'sent' LIMIT 1)
@@ -404,6 +440,10 @@ export class MailboxDO extends DurableObject<Env> {
 			return row?.total ?? 0;
 		}
 
+		const countSnoozeCond = (folder === Folders.INBOX || folder === "inbox")
+			? "AND (snooze_until IS NULL OR snooze_until <= datetime('now'))"
+			: "";
+
 		const row = [
 			...this.ctx.storage.sql.exec(
 				`WITH
@@ -414,6 +454,7 @@ export class MailboxDO extends DurableObject<Env> {
 					${NORMALIZED_SUBJECT_SQL} as normalized_subject
 					FROM emails
 					WHERE folder_id = (SELECT id FROM folders WHERE name = ?1 OR id = ?1 LIMIT 1)
+					${countSnoozeCond}
 				),
 				thread_to_conversation AS (
 					SELECT
@@ -451,11 +492,14 @@ export class MailboxDO extends DurableObject<Env> {
 			.where(eq(schema.attachments.email_id, id))
 			.all();
 
+		const labels = await this.getEmailLabels(id);
+
 		return {
 			...email,
 			read: !!email.read,
 			starred: !!email.starred,
 			attachments: emailAttachments,
+			labels,
 		};
 	}
 
@@ -817,6 +861,526 @@ export class MailboxDO extends DurableObject<Env> {
 	}
 
 	// ── Email creation (Drizzle) ───────────────────────────────────
+
+	// ── Labels ────────────────────────────────────────────────────────
+
+	async listLabels() {
+		return this.db.select().from(schema.labels).orderBy(asc(schema.labels.name)).all();
+	}
+
+	async createLabel(id: string, name: string, color: string) {
+		const existing = this.db.select({ id: schema.labels.id }).from(schema.labels).all();
+		if (existing.length >= 20) throw new Error("Max 20 labels per mailbox");
+		try {
+			return this.db.insert(schema.labels).values({ id, name, color }).returning().get();
+		} catch (e: unknown) {
+			if (e instanceof Error && e.message.includes("UNIQUE")) return null;
+			throw e;
+		}
+	}
+
+	async updateLabel(id: string, name: string, color: string) {
+		return this.db.update(schema.labels).set({ name, color })
+			.where(eq(schema.labels.id, id)).returning().get() ?? null;
+	}
+
+	async deleteLabel(id: string) {
+		const r = this.db.delete(schema.labels).where(eq(schema.labels.id, id))
+			.returning({ id: schema.labels.id }).get();
+		return !!r;
+	}
+
+	async applyLabel(emailId: string, labelId: string) {
+		const email = this.db.select({ thread_id: schema.emails.thread_id })
+			.from(schema.emails).where(eq(schema.emails.id, emailId)).get();
+		const threadId = email?.thread_id || emailId;
+
+		const threadEmails = [...this.ctx.storage.sql.exec(
+			`SELECT id FROM emails WHERE thread_id = ?1 OR id = ?1`, threadId,
+		)] as any[];
+		for (const row of threadEmails) {
+			try {
+				this.db.insert(schema.emailLabels).values({ email_id: row.id, label_id: labelId }).run();
+			} catch { /* already applied — skip */ }
+		}
+		return true;
+	}
+
+	async removeLabel(emailId: string, labelId: string) {
+		const email = this.db.select({ thread_id: schema.emails.thread_id })
+			.from(schema.emails).where(eq(schema.emails.id, emailId)).get();
+		const threadId = email?.thread_id || emailId;
+
+		this.ctx.storage.sql.exec(
+			`DELETE FROM email_labels WHERE label_id = ?1 AND email_id IN (SELECT id FROM emails WHERE thread_id = ?2 OR id = ?2)`,
+			labelId, threadId,
+		);
+		return true;
+	}
+
+	async getEmailLabels(emailId: string) {
+		return this.db.select({ id: schema.labels.id, name: schema.labels.name, color: schema.labels.color })
+			.from(schema.emailLabels)
+			.innerJoin(schema.labels, eq(schema.emailLabels.label_id, schema.labels.id))
+			.where(eq(schema.emailLabels.email_id, emailId)).all();
+	}
+
+	// ── Alarm queue ───────────────────────────────────────────────────
+
+	async #enqueueAlarm(type: string, payload: Record<string, string>, fireAt: string) {
+		const id = crypto.randomUUID();
+		this.ctx.storage.sql.exec(
+			`INSERT INTO pending_alarms (id, type, payload, fire_at) VALUES (?, ?, ?, ?)`,
+			id, type, JSON.stringify(payload), fireAt,
+		);
+		const existing = await this.ctx.storage.getAlarm();
+		const newTime = new Date(fireAt).getTime();
+		if (!existing || newTime < existing) {
+			await this.ctx.storage.setAlarm(newTime);
+		}
+	}
+
+	async #dequeueEarliestAlarm() {
+		const rows = [...this.ctx.storage.sql.exec(
+			`SELECT * FROM pending_alarms ORDER BY fire_at ASC LIMIT 1`,
+		)] as any[];
+		return rows[0] ?? null;
+	}
+
+	async #deleteAlarm(id: string) {
+		this.ctx.storage.sql.exec(`DELETE FROM pending_alarms WHERE id = ?`, id);
+	}
+
+	async #rearmNextAlarm() {
+		const next = await this.#dequeueEarliestAlarm();
+		if (next) await this.ctx.storage.setAlarm(new Date(next.fire_at).getTime());
+	}
+
+	async alarm() {
+		const entry = await this.#dequeueEarliestAlarm();
+		if (!entry) return;
+
+		const now = new Date().toISOString();
+		if (entry.fire_at > now) {
+			await this.ctx.storage.setAlarm(new Date(entry.fire_at).getTime());
+			return;
+		}
+
+		await this.#deleteAlarm(entry.id);
+		const payload = JSON.parse(entry.payload) as Record<string, string>;
+
+		try {
+			if (entry.type === "snooze") {
+				await this.#processSnoozeAlarm(payload.emailId);
+			} else if (entry.type === "send") {
+				await this.#processScheduledSend(payload.emailId, payload.mailboxId);
+			} else if (entry.type === "remind-unanswered") {
+				await this.#processUnansweredReminder(payload.emailId, payload.mailboxId);
+			} else if (entry.type === "daily-digest") {
+				await this.#processDailyDigest(payload.mailboxId);
+			}
+		} catch (e) {
+			console.error(`alarm() failed for type=${entry.type}:`, (e as Error).message);
+		} finally {
+			await this.#rearmNextAlarm();
+		}
+	}
+
+	async #processSnoozeAlarm(emailId: string) {
+		const email = this.db.select({ id: schema.emails.id })
+			.from(schema.emails).where(eq(schema.emails.id, emailId)).get();
+		if (!email) return;
+		this.ctx.storage.sql.exec(
+			`UPDATE emails SET snooze_until = NULL, folder_id = 'inbox' WHERE id = ?`,
+			emailId,
+		);
+	}
+
+	async #processScheduledSend(emailId: string, mailboxId: string) {
+		const email = this.db.select().from(schema.emails)
+			.where(eq(schema.emails.id, emailId)).get();
+		if (!email || email.folder_id !== "draft") return;
+
+		const settingsObj = await this.env.BUCKET.get(`mailboxes/${mailboxId}.json`);
+		const settings = settingsObj ? await settingsObj.json() as Record<string, any> : {};
+
+		await sendEmail(this.env.EMAIL, {
+			to: email.recipient || "",
+			from: { name: settings.fromName || mailboxId, email: mailboxId },
+			subject: email.subject || "",
+			html: email.body || "",
+		});
+
+		this.ctx.storage.sql.exec(
+			`UPDATE emails SET folder_id = 'sent', scheduled_send_at = NULL, read = 1 WHERE id = ?`,
+			emailId,
+		);
+	}
+
+	async #processUnansweredReminder(emailId: string, mailboxId: string) {
+		const emailRows = [...this.ctx.storage.sql.exec(
+			`SELECT id, subject, recipient, thread_id, created_at FROM emails WHERE id = ?`, emailId,
+		)] as any[];
+		const email = emailRows[0];
+		if (!email || !email.thread_id) return;
+
+		const hasReply = await this.#threadHasReplyAfter(email.thread_id, email.created_at);
+		if (hasReply) return;
+
+		const settingsObj = await this.env.BUCKET.get(`mailboxes/${mailboxId}.json`);
+		const settings = settingsObj ? await settingsObj.json() as Record<string, any> : {};
+		const daysSent = Math.floor((Date.now() - new Date(email.created_at).getTime()) / 86400_000);
+
+		await sendReminderNotification(settings.notifications, {
+			subject: email.subject || "(no subject)",
+			recipient: email.recipient || "",
+			daysSent,
+			mailboxId,
+			emailId,
+		});
+	}
+
+	async #processDailyDigest(mailboxId: string) {
+		const settingsObj = await this.env.BUCKET.get(`mailboxes/${mailboxId}.json`);
+		const settings = settingsObj ? await settingsObj.json() as Record<string, any> : {};
+		const unansweredDays = settings.unansweredDays ?? 3;
+		const digestTime = settings.digestTime ?? "08:00";
+
+		const data = await this.#compileDailyDigest(unansweredDays);
+		const summary = await synthesizeDigest(this.env.AI, data).catch(() => "");
+		await sendDigestNotification(settings.notifications, data, summary);
+
+		await this.ctx.storage.put("lastDigestAt", new Date().toISOString());
+
+		// Re-arm for next day
+		const next = nextDigestFireAt(digestTime);
+		await this.#enqueueAlarm("daily-digest", { mailboxId }, next);
+	}
+
+	// ── Snooze ────────────────────────────────────────────────────────
+
+	async snoozeEmail(emailId: string, until: string) {
+		this.ctx.storage.sql.exec(
+			`UPDATE emails SET snooze_until = ? WHERE id = ?`, until, emailId,
+		);
+		await this.#enqueueAlarm("snooze", { emailId }, until);
+		return true;
+	}
+
+	async unsnoozeEmail(emailId: string) {
+		this.ctx.storage.sql.exec(
+			`UPDATE emails SET snooze_until = NULL WHERE id = ?`, emailId,
+		);
+		this.ctx.storage.sql.exec(
+			`DELETE FROM pending_alarms WHERE type = 'snooze' AND json_extract(payload, '$.emailId') = ?`,
+			emailId,
+		);
+	}
+
+	async scheduleEmail(emailId: string, sendAt: string, mailboxId: string) {
+		this.ctx.storage.sql.exec(
+			`UPDATE emails SET scheduled_send_at = ? WHERE id = ?`, sendAt, emailId,
+		);
+		await this.#enqueueAlarm("send", { emailId, mailboxId }, sendAt);
+		return true;
+	}
+
+	async cancelScheduledEmail(emailId: string) {
+		this.ctx.storage.sql.exec(
+			`UPDATE emails SET scheduled_send_at = NULL WHERE id = ?`, emailId,
+		);
+		this.ctx.storage.sql.exec(
+			`DELETE FROM pending_alarms WHERE type = 'send' AND json_extract(payload, '$.emailId') = ?`,
+			emailId,
+		);
+	}
+
+	async getSnoozedEmails(page = 1, limit = 25) {
+		const offset = (page - 1) * limit;
+		return [...this.ctx.storage.sql.exec(
+			`SELECT * FROM emails WHERE snooze_until > datetime('now') ORDER BY snooze_until ASC LIMIT ?1 OFFSET ?2`,
+			limit, offset,
+		)].map((row: any) => ({ ...row, read: !!row.read, starred: !!row.starred }));
+	}
+
+	async getScheduledEmails(page = 1, limit = 25) {
+		const offset = (page - 1) * limit;
+		return [...this.ctx.storage.sql.exec(
+			`SELECT * FROM emails WHERE scheduled_send_at IS NOT NULL AND folder_id = 'draft' ORDER BY scheduled_send_at ASC LIMIT ?1 OFFSET ?2`,
+			limit, offset,
+		)].map((row: any) => ({ ...row, read: !!row.read, starred: !!row.starred }));
+	}
+
+	// ── Contacts ──────────────────────────────────────────────────────
+
+	async upsertContact(email: string, name?: string) {
+		const now = new Date().toISOString();
+		const existing = this.db.select().from(schema.contacts)
+			.where(eq(schema.contacts.email, email.toLowerCase())).get();
+		if (existing) {
+			this.db.update(schema.contacts)
+				.set({
+					frequency: existing.frequency + 1,
+					last_seen: now,
+					...(name && !existing.name ? { name } : {}),
+				})
+				.where(eq(schema.contacts.id, existing.id)).run();
+		} else {
+			this.db.insert(schema.contacts).values({
+				id: crypto.randomUUID(),
+				email: email.toLowerCase(),
+				name: name || null,
+				frequency: 1,
+				last_seen: now,
+			}).run();
+		}
+	}
+
+	async searchContacts(query: string, limit = 10) {
+		const q = `%${query.toLowerCase()}%`;
+		return [...this.ctx.storage.sql.exec(
+			`SELECT * FROM contacts WHERE LOWER(email) LIKE ?1 OR LOWER(COALESCE(name,'')) LIKE ?1
+			 ORDER BY frequency DESC, last_seen DESC LIMIT ?2`,
+			q, limit,
+		)] as any[];
+	}
+
+	async listContacts(page = 1, limit = 50) {
+		const offset = (page - 1) * limit;
+		return [...this.ctx.storage.sql.exec(
+			`SELECT * FROM contacts ORDER BY frequency DESC, last_seen DESC LIMIT ?1 OFFSET ?2`,
+			limit, offset,
+		)] as any[];
+	}
+
+	async updateContact(id: string, name: string) {
+		return this.db.update(schema.contacts).set({ name })
+			.where(eq(schema.contacts.id, id)).returning().get() ?? null;
+	}
+
+	async deleteContact(id: string) {
+		const r = this.db.delete(schema.contacts)
+			.where(eq(schema.contacts.id, id)).returning({ id: schema.contacts.id }).get();
+		return !!r;
+	}
+
+	// ── Triage ────────────────────────────────────────────────────────
+
+	async setEmailTriage(emailId: string, triage: { category: string; priority: number; confidence: number; reason: string }) {
+		this.ctx.storage.sql.exec(
+			`UPDATE emails SET triage_category = ?, triage_priority = ?, triage_confidence = ?, triage_summary = ? WHERE id = ?`,
+			triage.category, triage.priority, triage.confidence, triage.reason, emailId,
+		);
+	}
+
+	async getEmailTriage(emailId: string) {
+		const rows = [...this.ctx.storage.sql.exec(
+			`SELECT triage_category, triage_priority, triage_summary, triage_confidence FROM emails WHERE id = ?`,
+			emailId,
+		)] as any[];
+		return rows[0] ?? null;
+	}
+
+	// Creates a system label for a triage category if it doesn't exist, returns label id.
+	async ensureSystemLabel(category: string): Promise<string | null> {
+		const SYSTEM_LABELS: Record<string, { name: string; color: string }> = {
+			personal:     { name: "Personal",     color: "#3b82f6" },
+			business:     { name: "Business",     color: "#8b5cf6" },
+			newsletter:   { name: "Newsletter",   color: "#06b6d4" },
+			notification: { name: "Notification", color: "#f59e0b" },
+			spam:         { name: "Spam",         color: "#ef4444" },
+		};
+		const def = SYSTEM_LABELS[category];
+		if (!def) return null;
+
+		const labelId = `ai-${category}`;
+		try {
+			this.ctx.storage.sql.exec(
+				`INSERT OR IGNORE INTO labels (id, name, color) VALUES (?, ?, ?)`,
+				labelId, def.name, def.color,
+			);
+		} catch { /* ignore */ }
+		return labelId;
+	}
+
+	// Thread summarization helpers
+	async countThreadEmails(threadId: string): Promise<number> {
+		const rows = [...this.ctx.storage.sql.exec(
+			`SELECT COUNT(*) as cnt FROM emails WHERE thread_id = ?`, threadId,
+		)] as any[];
+		return rows[0]?.cnt ?? 0;
+	}
+
+	async setThreadSummary(emailId: string, summary: string) {
+		this.ctx.storage.sql.exec(
+			`UPDATE emails SET triage_summary = ? WHERE id = ?`, summary, emailId,
+		);
+	}
+
+	// Priority inbox: unread first, then priority DESC, then date DESC
+	async getPriorityInboxEmails(page = 1, limit = 50) {
+		const safeLimit = Math.min(Math.max(limit, 1), 100);
+		const offset = (page - 1) * safeLimit;
+		const rows = [...this.ctx.storage.sql.exec(
+			`SELECT id, subject, sender, recipient, date, read, starred, thread_id, folder_id,
+			        triage_category, triage_priority, triage_summary, triage_confidence,
+			        SUBSTR(body, 1, 300) as snippet
+			 FROM emails
+			 WHERE folder_id = 'inbox'
+			   AND (snooze_until IS NULL OR snooze_until <= datetime('now'))
+			 ORDER BY
+			   CASE WHEN read = 0 THEN 0 ELSE 1 END ASC,
+			   COALESCE(triage_priority, 0) DESC,
+			   date DESC
+			 LIMIT ?1 OFFSET ?2`,
+			safeLimit, offset,
+		)] as any[];
+		return rows.map((row) => ({ ...row, read: !!row.read, starred: !!row.starred }));
+	}
+
+	async countPriorityInboxEmails(): Promise<number> {
+		const rows = [...this.ctx.storage.sql.exec(
+			`SELECT COUNT(*) as cnt FROM emails
+			 WHERE folder_id = 'inbox'
+			   AND (snooze_until IS NULL OR snooze_until <= datetime('now'))`,
+		)] as any[];
+		return rows[0]?.cnt ?? 0;
+	}
+
+	// ── Action Items ──────────────────────────────────────────────────
+
+	async createActionItem(item: { emailId: string; description: string; dueDate?: string | null }) {
+		const id = crypto.randomUUID();
+		const now = new Date().toISOString();
+		this.ctx.storage.sql.exec(
+			`INSERT INTO action_items (id, email_id, description, due_date, created_at) VALUES (?, ?, ?, ?, ?)`,
+			id, item.emailId, item.description, item.dueDate ?? null, now,
+		);
+		return id;
+	}
+
+	async listActionItems(opts: { pendingOnly?: boolean; limit?: number } = {}) {
+		const limit = opts.limit ?? 50;
+		const rows = opts.pendingOnly
+			? [...this.ctx.storage.sql.exec(
+				`SELECT id, email_id, description, due_date, completed_at, created_at
+				 FROM action_items WHERE completed_at IS NULL ORDER BY created_at ASC LIMIT ?`,
+				limit,
+			)]
+			: [...this.ctx.storage.sql.exec(
+				`SELECT id, email_id, description, due_date, completed_at, created_at
+				 FROM action_items ORDER BY created_at ASC LIMIT ?`,
+				limit,
+			)];
+		return (rows as any[]).map((r) => ({
+			id: r.id, emailId: r.email_id, description: r.description,
+			dueDate: r.due_date ?? null, completedAt: r.completed_at ?? null, createdAt: r.created_at,
+		}));
+	}
+
+	async completeActionItem(id: string) {
+		this.ctx.storage.sql.exec(
+			`UPDATE action_items SET completed_at = datetime('now') WHERE id = ?`, id,
+		);
+		return true;
+	}
+
+	async deleteActionItem(id: string) {
+		this.ctx.storage.sql.exec(`DELETE FROM action_items WHERE id = ?`, id);
+		return true;
+	}
+
+	// ── Unanswered / Follow-up ────────────────────────────────────────
+
+	async #threadHasReplyAfter(threadId: string, sentAt: string): Promise<boolean> {
+		const rows = [...this.ctx.storage.sql.exec(
+			`SELECT COUNT(*) as cnt FROM emails
+			 WHERE thread_id = ? AND folder_id = 'inbox' AND created_at > ?`,
+			threadId, sentAt,
+		)] as any[];
+		return (rows[0]?.cnt ?? 0) > 0;
+	}
+
+	async getPendingFollowUps(days = 3) {
+		const rows = [...this.ctx.storage.sql.exec(
+			`SELECT e.id, e.subject, e.sender, e.recipient, e.date, e.thread_id
+			 FROM emails e
+			 WHERE e.folder_id = 'sent'
+			   AND e.created_at < datetime('now', '-' || ? || ' days')
+			   AND NOT EXISTS (
+			     SELECT 1 FROM emails r
+			     WHERE r.thread_id = e.thread_id
+			       AND r.folder_id = 'inbox'
+			       AND r.created_at > e.created_at
+			   )
+			 ORDER BY e.created_at ASC LIMIT 20`,
+			days,
+		)] as any[];
+		return rows;
+	}
+
+	async scheduleFollowUpReminder(emailId: string, mailboxId: string) {
+		const settingsObj = await this.env.BUCKET.get(`mailboxes/${mailboxId}.json`);
+		const settings = settingsObj ? await settingsObj.json() as Record<string, any> : {};
+		const days = settings.unansweredDays ?? 3;
+		const fireAt = new Date(Date.now() + days * 86400_000).toISOString();
+		await this.#enqueueAlarm("remind-unanswered", { emailId, mailboxId }, fireAt);
+	}
+
+	async cancelFollowUpReminder(emailId: string) {
+		this.ctx.storage.sql.exec(
+			`DELETE FROM pending_alarms WHERE type = 'remind-unanswered' AND json_extract(payload, '$.emailId') = ?`,
+			emailId,
+		);
+	}
+
+	// ── Daily Digest ──────────────────────────────────────────────────
+
+	async #compileDailyDigest(unansweredDays = 3) {
+		const lastDigestAt = await this.ctx.storage.get<string>("lastDigestAt");
+		const since = lastDigestAt ?? new Date(Date.now() - 86400_000).toISOString();
+
+		const [newEmailsRows, topEmailsRows, pendingActions, overdueActions, followUps] = await Promise.all([
+			[...this.ctx.storage.sql.exec(
+				`SELECT COUNT(*) as cnt FROM emails WHERE folder_id = 'inbox' AND created_at > ?`, since,
+			)] as any[],
+			[...this.ctx.storage.sql.exec(
+				`SELECT id, subject, sender, triage_priority FROM emails
+				 WHERE folder_id = 'inbox' AND read = 0 AND triage_priority >= 3
+				 ORDER BY triage_priority DESC, date DESC LIMIT 5`,
+			)] as any[],
+			this.listActionItems({ pendingOnly: true, limit: 5 }),
+			[...this.ctx.storage.sql.exec(
+				`SELECT id, email_id, description, due_date FROM action_items
+				 WHERE due_date < date('now') AND completed_at IS NULL LIMIT 5`,
+			)] as any[],
+			this.getPendingFollowUps(unansweredDays),
+		]);
+
+		return {
+			newEmailsCount: newEmailsRows[0]?.cnt ?? 0,
+			topEmails: topEmailsRows,
+			pendingActions,
+			overdueActions,
+			followUps: followUps.slice(0, 3),
+			lastDigestAt: since,
+		};
+	}
+
+	async seedDigestAlarm(digestTime: string, mailboxId: string) {
+		// Cancel any existing daily-digest alarm for this mailbox
+		this.ctx.storage.sql.exec(
+			`DELETE FROM pending_alarms WHERE type = 'daily-digest'`,
+		);
+		const fireAt = nextDigestFireAt(digestTime);
+		await this.#enqueueAlarm("daily-digest", { mailboxId }, fireAt);
+	}
+
+	async cancelDigestAlarm() {
+		this.ctx.storage.sql.exec(
+			`DELETE FROM pending_alarms WHERE type = 'daily-digest'`,
+		);
+	}
 
 	async createEmail(
 		folder: string,
