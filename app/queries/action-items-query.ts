@@ -10,10 +10,7 @@ import type { ActionItem } from "~/types";
 export function useActionItems(mailboxId: string | undefined, pendingOnly = true) {
 	return useQuery<ActionItem[]>({
 		queryKey: queryKeys.actionItems.list(mailboxId ?? ""),
-		queryFn: async () => {
-			const res = await api.get(`/api/v1/mailboxes/${mailboxId}/action-items?pending=${pendingOnly}`);
-			return res.data as ActionItem[];
-		},
+		queryFn: () => api.listActionItems(mailboxId!, pendingOnly),
 		enabled: !!mailboxId,
 	});
 }
@@ -21,9 +18,7 @@ export function useActionItems(mailboxId: string | undefined, pendingOnly = true
 export function useCompleteActionItem(mailboxId: string) {
 	const queryClient = useQueryClient();
 	return useMutation({
-		mutationFn: async (itemId: string) => {
-			await api.patch(`/api/v1/mailboxes/${mailboxId}/action-items/${itemId}`, { completed: true });
-		},
+		mutationFn: (itemId: string) => api.completeActionItem(mailboxId, itemId),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: queryKeys.actionItems.list(mailboxId) });
 		},
@@ -33,9 +28,7 @@ export function useCompleteActionItem(mailboxId: string) {
 export function useDeleteActionItem(mailboxId: string) {
 	const queryClient = useQueryClient();
 	return useMutation({
-		mutationFn: async (itemId: string) => {
-			await api.delete(`/api/v1/mailboxes/${mailboxId}/action-items/${itemId}`);
-		},
+		mutationFn: (itemId: string) => api.deleteActionItem(mailboxId, itemId),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: queryKeys.actionItems.list(mailboxId) });
 		},
