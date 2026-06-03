@@ -252,4 +252,33 @@ export const mailboxMigrations: Migration[] = [
             CREATE INDEX idx_action_items_pending ON action_items(completed_at) WHERE completed_at IS NULL;
         `),
 	},
+	{
+		name: "16_add_email_embeddings",
+		sql: txn(`
+            CREATE TABLE email_embeddings (
+                email_id    TEXT NOT NULL PRIMARY KEY,
+                embedded_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+        `),
+	},
+	{
+		name: "17_add_contact_intelligence",
+		sql: `ALTER TABLE contacts ADD COLUMN intelligence TEXT;`,
+	},
+	{
+		name: "18_add_automation_rules",
+		sql: txn(`
+            CREATE TABLE automation_rules (
+                id         TEXT NOT NULL PRIMARY KEY,
+                name       TEXT NOT NULL,
+                enabled    INTEGER NOT NULL DEFAULT 1,
+                priority   INTEGER NOT NULL DEFAULT 0,
+                conditions TEXT NOT NULL,
+                actions    TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX idx_rules_priority ON automation_rules(priority);
+        `),
+	},
 ];

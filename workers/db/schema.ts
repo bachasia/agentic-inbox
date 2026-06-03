@@ -49,11 +49,12 @@ export const emailLabels = sqliteTable("email_labels", {
 }, (t) => ({ pk: primaryKey({ columns: [t.email_id, t.label_id] }) }));
 
 export const contacts = sqliteTable("contacts", {
-	id:        text("id").primaryKey(),
-	email:     text("email").notNull().unique(),
-	name:      text("name"),
-	frequency: integer("frequency").notNull().default(1),
-	last_seen: text("last_seen").notNull(),
+	id:           text("id").primaryKey(),
+	email:        text("email").notNull().unique(),
+	name:         text("name"),
+	frequency:    integer("frequency").notNull().default(1),
+	last_seen:    text("last_seen").notNull(),
+	intelligence: text("intelligence"),
 });
 
 export const pendingAlarms = sqliteTable("pending_alarms", {
@@ -64,12 +65,28 @@ export const pendingAlarms = sqliteTable("pending_alarms", {
 });
 
 export const actionItems = sqliteTable("action_items", {
-	id:          text("id").primaryKey(),
-	email_id:    text("email_id").notNull(),
-	description: text("description").notNull(),
-	due_date:    text("due_date"),
+	id:           text("id").primaryKey(),
+	email_id:     text("email_id").notNull(),
+	description:  text("description").notNull(),
+	due_date:     text("due_date"),
 	completed_at: text("completed_at"),
-	created_at:  text("created_at").notNull(),
+	created_at:   text("created_at").notNull(),
+});
+
+export const emailEmbeddings = sqliteTable("email_embeddings", {
+	email_id:    text("email_id").notNull().primaryKey(),
+	embedded_at: text("embedded_at").notNull(),
+});
+
+export const automationRules = sqliteTable("automation_rules", {
+	id:         text("id").primaryKey(),
+	name:       text("name").notNull(),
+	enabled:    integer("enabled").notNull().default(1),
+	priority:   integer("priority").notNull().default(0),
+	conditions: text("conditions").notNull(),
+	actions:    text("actions").notNull(),
+	created_at: text("created_at").notNull(),
+	updated_at: text("updated_at").notNull(),
 });
 
 export const attachments = sqliteTable("attachments", {

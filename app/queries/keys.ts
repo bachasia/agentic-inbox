@@ -39,4 +39,10 @@ export const queryKeys = {
 	actionItems: {
 		list: (mailboxId: string) => ["mailboxes", mailboxId, "action-items"] as const,
 	},
+	contactIntelligence: {
+		detail: (mailboxId: string, email: string) => ["mailboxes", mailboxId, "contact-intelligence", email] as const,
+	},
+	rules: {
+		list: (mailboxId: string) => ["mailboxes", mailboxId, "rules"] as const,
+	},
 };

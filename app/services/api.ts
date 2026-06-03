@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import type { Email, Folder, Mailbox, Label, Contact, EmailTemplate } from "~/types";
+import type { Email, Folder, Mailbox, Label, Contact, EmailTemplate, ActionItem, ContactIntelligence, AutomationRule, RuleCondition, RuleAction } from "~/types";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -236,6 +236,37 @@ const api = {
 		put<EmailTemplate>(`/api/v1/mailboxes/${mailboxId}/templates/${id}`, t),
 	deleteTemplate: (mailboxId: string, id: string) =>
 		del<void>(`/api/v1/mailboxes/${mailboxId}/templates/${id}`),
+
+	// Action items
+	listActionItems: (mailboxId: string, pendingOnly = true) =>
+		get<ActionItem[]>(`/api/v1/mailboxes/${mailboxId}/action-items`, { params: { pending: String(pendingOnly) } }),
+	completeActionItem: (mailboxId: string, itemId: string) =>
+		request<void>(`/api/v1/mailboxes/${mailboxId}/action-items/${itemId}`, { method: "PATCH", body: JSON.stringify({ completed: true }) }),
+	deleteActionItem: (mailboxId: string, itemId: string) =>
+		del<void>(`/api/v1/mailboxes/${mailboxId}/action-items/${itemId}`),
+
+	// Semantic search
+	semanticSearch: (mailboxId: string, q: string, limit = 20) =>
+		get<{ emails: Array<Email & { relevanceScore: number }> }>(
+			`/api/v1/mailboxes/${mailboxId}/semantic-search`,
+			{ params: { q, limit: String(limit) } },
+		),
+
+	// Contact intelligence
+	getContactIntelligence: (mailboxId: string, contactEmail: string) =>
+		get<ContactIntelligence>(`/api/v1/mailboxes/${mailboxId}/contacts/${encodeURIComponent(contactEmail)}/intelligence`),
+
+	// Automation rules
+	listRules: (mailboxId: string) =>
+		get<AutomationRule[]>(`/api/v1/mailboxes/${mailboxId}/rules`),
+	createRule: (mailboxId: string, rule: { name: string; conditions: RuleCondition[]; actions: RuleAction[]; priority?: number }) =>
+		post<{ id: string }>(`/api/v1/mailboxes/${mailboxId}/rules`, rule),
+	updateRule: (mailboxId: string, ruleId: string, updates: Partial<Omit<AutomationRule, "id" | "createdAt" | "updatedAt">>) =>
+		put<{ id: string; updated: boolean }>(`/api/v1/mailboxes/${mailboxId}/rules/${ruleId}`, updates),
+	deleteRule: (mailboxId: string, ruleId: string) =>
+		del<void>(`/api/v1/mailboxes/${mailboxId}/rules/${ruleId}`),
+	reorderRules: (mailboxId: string, ids: string[]) =>
+		put<{ reordered: boolean }>(`/api/v1/mailboxes/${mailboxId}/rules/reorder`, { ids }),
 };
 
 export default api;

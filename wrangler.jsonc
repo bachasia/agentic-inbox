@@ -32,6 +32,12 @@
 	"ai": {
 		"binding": "AI"
 	},
+	"vectorize": [
+		{
+			"binding": "VECTORIZE",
+			"index_name": "email-embeddings"
+		}
+	],
 	"durable_objects": {
 		"bindings": [
 			{

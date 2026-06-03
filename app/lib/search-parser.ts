@@ -110,6 +110,22 @@ export function parseSearchQuery(input: string): ParsedSearch {
 	return result;
 }
 
+const OPERATOR_NAMES = ["from", "to", "subject", "in", "is", "has", "before", "after"];
+
+/**
+ * Returns true if the query looks like natural language (no Gmail-style operators).
+ * Used to auto-detect when to route to semantic search vs keyword search.
+ */
+export function isNaturalLanguage(query: string): boolean {
+	if (!query.trim()) return false;
+	// If it contains any operator like "from:", "subject:", etc. → not NL
+	for (const op of OPERATOR_NAMES) {
+		if (new RegExp(`\\b${op}:`, "i").test(query)) return false;
+	}
+	// Looks like NL if it's a phrase (multiple words) with no operators
+	return query.trim().split(/\s+/).length >= 2;
+}
+
 /**
  * Normalize a date string to ISO format. Accepts YYYY-MM-DD or various
  * Date-parseable strings.

@@ -123,3 +123,37 @@ export interface Folder {
 	name: string;
 	unreadCount: number;
 }
+
+export interface ContactIntelligence {
+	totalEmails: number;
+	emailsSent: number;
+	emailsReceived: number;
+	firstContact: string | null;
+	lastContact: string | null;
+	avgResponseTimeHours: number | null;
+	topTopics: string[];
+	relationshipScore: number;
+	computedAt: string;
+}
+
+export interface RuleCondition {
+	field: "from" | "to" | "subject" | "body" | "category" | "priority";
+	operator: "contains" | "equals" | "starts_with" | "ends_with" | "greater_than" | "less_than";
+	value: string;
+}
+
+export interface RuleAction {
+	type: "label" | "move" | "archive" | "mark_read" | "notify" | "webhook";
+	params?: Record<string, string>;
+}
+
+export interface AutomationRule {
+	id: string;
+	name: string;
+	enabled: boolean;
+	priority: number;
+	conditions: RuleCondition[];
+	actions: RuleAction[];
+	createdAt: string;
+	updatedAt: string;
+}

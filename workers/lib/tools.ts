@@ -25,8 +25,10 @@ import {
 	generateMessageId,
 	buildReferencesChain,
 	buildThreadingHeaders,
+	stripHtmlToText,
 } from "./email-helpers";
-import { verifyDraft } from "./ai";
+import { verifyDraft, synthesizeAnswer } from "./ai";
+import { searchSimilarEmails } from "./vectorize";
 import { sendEmail } from "../email-sender";
 import { Folders } from "../../shared/folders";
 import type { Env } from "../types";
@@ -465,6 +467,82 @@ export async function toolSendReply(
 	);
 
 	return { status: "sent", messageId, message: `Reply sent to ${params.to}` };
+}
+
+// ── semantic_search ────────────────────────────────────────────────
+
+type SemanticSearchStub = {
+	getEmailsByIds: (ids: string[]) => Promise<Array<{ id: string; subject: string | null; sender: string | null; date: string | null; body: string | null; triage_priority: number | null }>>;
+};
+
+export async function toolSemanticSearch(
+	env: Env,
+	mailboxId: string,
+	params: { query: string; limit?: number },
+) {
+	if (!(env as any).VECTORIZE) return { error: "Semantic search unavailable", results: [] };
+	const matches = await searchSimilarEmails((env as any).VECTORIZE, env.AI, params.query, mailboxId, params.limit ?? 10);
+	if (matches.length === 0) return { results: [] };
+
+	const stub = getMailboxStub(env, mailboxId);
+	const emailIds = matches.map((m) => m.emailId);
+	const emails = await (stub as unknown as SemanticSearchStub).getEmailsByIds(emailIds);
+
+	const scoreMap = new Map(matches.map((m) => [m.emailId, m.score]));
+	return {
+		results: emails.map((e) => ({
+			id: e.id, subject: e.subject, sender: e.sender, date: e.date,
+			relevanceScore: scoreMap.get(e.id) ?? 0,
+		})),
+	};
+}
+
+// ── ask_about_emails ───────────────────────────────────────────────
+
+export async function toolAskAboutEmails(
+	env: Env,
+	mailboxId: string,
+	params: { question: string },
+) {
+	if (!(env as any).VECTORIZE) {
+		return { answer: "Semantic search is not available. Try using search_emails with keywords." };
+	}
+
+	const matches = await searchSimilarEmails((env as any).VECTORIZE, env.AI, params.question, mailboxId, 10);
+	if (matches.length === 0) {
+		return { answer: "I couldn't find relevant information in your emails." };
+	}
+
+	const stub = getMailboxStub(env, mailboxId);
+	const emailIds = matches.map((m) => m.emailId);
+	const emails = await (stub as unknown as SemanticSearchStub).getEmailsByIds(emailIds);
+
+	const contexts = emails.map((e) => ({
+		subject: e.subject ?? "(no subject)",
+		from: e.sender ?? "(unknown)",
+		date: e.date ?? "",
+		body: stripHtmlToText(e.body ?? ""),
+	}));
+
+	const answer = await synthesizeAnswer(env.AI, params.question, contexts);
+	return { answer };
+}
+
+// ── get_contact_intelligence ───────────────────────────────────────
+
+type ContactIntelligenceStub = {
+	getContactIntelligence: (email: string) => Promise<Record<string, unknown> | null>;
+};
+
+export async function toolGetContactIntelligence(
+	env: Env,
+	mailboxId: string,
+	params: { contactEmail: string },
+) {
+	const stub = getMailboxStub(env, mailboxId);
+	const intel = await (stub as unknown as ContactIntelligenceStub).getContactIntelligence(params.contactEmail);
+	if (!intel) return { error: `No contact found for ${params.contactEmail}` };
+	return intel;
 }
 
 // ── get_action_items ───────────────────────────────────────────────

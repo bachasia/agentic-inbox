@@ -29,7 +29,7 @@ export async function isPromptInjection(ai: Ai, bodyHtml: string | null | undefi
 
 	try {
 		const response = (await ai.run(
-			// @ts-expect-error — model string not in generated union
+			// @ts-expect-error — model not in generated union
 			"@cf/meta/llama-3.1-8b-instruct-fast",
 			{
 				messages: [
@@ -183,8 +183,8 @@ export async function verifyDraft(ai: Ai, body: string): Promise<string> {
 			? `${cleanedTrimmed}\n\n${quotedBlock}`
 			: cleanedTrimmed;
 	} catch (e) {
-				console.error("AI failed — returns empty body, callers may save blank draft:", (e as Error).message);
-		return "";
+		console.error("verifyDraft AI failed, returning original body:", (e as Error).message);
+		return body;
 	}
 }
 
@@ -233,7 +233,7 @@ export async function extractActionItems(
 
 	try {
 		const response = (await ai.run(
-			// @ts-expect-error — model string not in generated union
+
 			"@cf/meta/llama-4-scout-17b-16e-instruct",
 			{
 				messages: [
@@ -280,7 +280,7 @@ export async function synthesizeDigest(ai: Ai, data: Record<string, any>): Promi
 
 	try {
 		const response = (await ai.run(
-			// @ts-expect-error — model string not in generated union
+			// @ts-expect-error — model not in generated union
 			"@cf/moonshotai/kimi-k2.5",
 			{
 				messages: [
@@ -333,7 +333,7 @@ export async function triageEmail(
 
 	try {
 		const response = (await ai.run(
-			// @ts-expect-error — model string not in generated union
+
 			"@cf/meta/llama-4-scout-17b-16e-instruct",
 			{
 				messages: [
@@ -364,6 +364,73 @@ export async function triageEmail(
 	}
 }
 
+// ── Semantic Q&A (RAG) ─────────────────────────────────────────────
+
+const SYNTHESIZE_ANSWER_PROMPT = `Answer the question based ONLY on the provided emails. Cite sources as [Subject, Date, Sender]. If the answer is not in the emails, say "I couldn't find relevant information in your emails."`;
+
+export async function synthesizeAnswer(
+	ai: Ai,
+	question: string,
+	emailContexts: Array<{ subject: string; from: string; date: string; body: string }>,
+): Promise<string> {
+	const context = emailContexts.map((e, i) =>
+		`[Email ${i + 1}] From: ${e.from} | Subject: ${e.subject} | Date: ${e.date}\n${e.body.slice(0, 1500)}`,
+	).join("\n---\n");
+
+	try {
+		const result = (await ai.run(
+			// @ts-expect-error — model not in generated union
+			"@cf/moonshotai/kimi-k2.5",
+			{
+				messages: [
+					{ role: "system", content: SYNTHESIZE_ANSWER_PROMPT },
+					{ role: "user", content: `Question: ${question}\n\n---\nEmails:\n${context}` },
+				],
+				max_tokens: 1024,
+				temperature: 0.2,
+			},
+		)) as { response?: string };
+		return result?.response?.trim() ?? "I couldn't find relevant information in your emails.";
+	} catch (e) {
+		console.error("synthesizeAnswer failed:", (e as Error).message);
+		return "I couldn't find relevant information in your emails.";
+	}
+}
+
+// ── Contact Topic Extraction ────────────────────────────────────────
+
+const CONTACT_TOPICS_PROMPT = `Extract exactly 3 short topic labels (1-3 words each) that best describe the themes of these email subjects. Skip generic subjects like "Re: Hi" or subjects shorter than 5 characters. Return ONLY a JSON array of 3 strings, no other text. Example: ["Project planning", "Budget review", "Onboarding"]`;
+
+export async function extractContactTopics(ai: Ai, subjects: string[]): Promise<string[]> {
+	const filtered = subjects.filter((s) => s.replace(/^(re:|fwd?:)\s*/i, "").trim().length >= 5);
+	if (filtered.length === 0) return [];
+
+	try {
+		const result = (await ai.run(
+
+			"@cf/meta/llama-4-scout-17b-16e-instruct",
+			{
+				messages: [
+					{ role: "system", content: CONTACT_TOPICS_PROMPT },
+					{ role: "user", content: filtered.slice(0, 20).join("\n") },
+				],
+				max_tokens: 100,
+				temperature: 0,
+			},
+		)) as { response?: string };
+
+		const raw = result?.response?.trim() || "";
+		const jsonMatch = raw.match(/\[[\s\S]*?\]/);
+		if (!jsonMatch) return [];
+		const parsed = JSON.parse(jsonMatch[0]);
+		if (!Array.isArray(parsed)) return [];
+		return parsed.filter((t: unknown) => typeof t === "string").slice(0, 3);
+	} catch (e) {
+		console.error("extractContactTopics failed:", (e as Error).message);
+		return [];
+	}
+}
+
 // ── Thread Summarization ────────────────────────────────────────────
 
 const SUMMARIZE_PROMPT = `Summarize this email thread in one sentence (max 120 chars). Focus on the topic and current status. Return ONLY the summary, no quotes.`;
@@ -380,7 +447,7 @@ export async function summarizeThread(
 
 	try {
 		const response = (await ai.run(
-			// @ts-expect-error — model string not in generated union
+
 			"@cf/meta/llama-4-scout-17b-16e-instruct",
 			{
 				messages: [

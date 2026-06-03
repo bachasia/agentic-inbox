@@ -15,9 +15,11 @@ import {
 	generateMessageId,
 	buildThreadingHeaders,
 	listMailboxes,
+	stripHtmlToText,
 } from "./lib/email-helpers";
 import { SendEmailRequestSchema } from "./lib/schemas";
-import { triageEmail, summarizeThread, extractActionItems } from "./lib/ai";
+import { triageEmail, summarizeThread, extractActionItems, extractContactTopics } from "./lib/ai";
+import { embedText, upsertEmailEmbedding, searchSimilarEmails, deleteEmailEmbedding } from "./lib/vectorize";
 import { handleReplyEmail, handleForwardEmail } from "./routes/reply-forward";
 import { Folders } from "../shared/folders";
 import type { Env } from "./types";
@@ -283,9 +285,17 @@ app.put("/api/v1/mailboxes/:mailboxId/emails/:id", async (c: AppContext) => {
 
 app.delete("/api/v1/mailboxes/:mailboxId/emails/:id", async (c: AppContext) => {
 	const id = c.req.param("id")!;
+	const mailboxId = c.req.param("mailboxId")!;
 	const attachments = await c.var.mailboxStub.deleteEmail(id);
 	if (attachments === null) return c.json({ error: "Not found" }, 404);
 	if (attachments.length > 0) await c.env.BUCKET.delete(attachments.map((att: any) => `attachments/${id}/${att.id}/${att.filename}`));
+	// Clean up Vectorize embedding (fail-open)
+	if ((c.env as any).VECTORIZE) {
+		c.executionCtx.waitUntil(
+			deleteEmailEmbedding((c.env as any).VECTORIZE, mailboxId, id)
+				.catch((e: Error) => console.error("Embedding delete failed:", e.message)),
+		);
+	}
 	return c.body(null, 204);
 });
 
@@ -524,6 +534,133 @@ app.get("/api/v1/mailboxes/:mailboxId/search", async (c: AppContext) => {
 	const emails = await stub.searchEmails({ ...searchOpts, page: intQuery(c, "page"), limit: intQuery(c, "limit") });
 	const totalCount = await stub.countSearchResults(searchOpts);
 	return c.json({ emails, totalCount });
+});
+
+// -- Semantic search ------------------------------------------------
+
+app.get("/api/v1/mailboxes/:mailboxId/semantic-search", async (c: AppContext) => {
+	const query = c.req.query("q") || "";
+	const limit = Math.min(intQuery(c, "limit") ?? 20, 50);
+	const mailboxId = c.req.param("mailboxId")!;
+
+	if (!query.trim()) return c.json({ emails: [], scores: [] });
+	if (!(c.env as any).VECTORIZE) return c.json({ error: "Semantic search not configured" }, 503);
+
+	const matches = await searchSimilarEmails((c.env as any).VECTORIZE, c.env.AI, query, mailboxId, limit * 2);
+	if (matches.length === 0) return c.json({ emails: [], scores: [] });
+
+	const emailIds = matches.map((m) => m.emailId);
+	const stub = c.var.mailboxStub as any;
+	const emails = await stub.getEmailsByIds(emailIds);
+
+	// Re-rank: vectorScore * 0.7 + recencyScore * 0.2 + priorityScore * 0.1
+	const now = Date.now();
+	const scoreMap = new Map(matches.map((m) => [m.emailId, m.score]));
+	const ranked = emails.map((e: any) => {
+		const vectorScore = scoreMap.get(e.id) ?? 0;
+		const ageMs = e.date ? now - new Date(e.date).getTime() : now;
+		const ageDays = ageMs / 86400000;
+		const recencyScore = Math.max(0, 1 - ageDays / 365);
+		const priorityScore = (e.triage_priority ?? 1) / 4;
+		const finalScore = vectorScore * 0.7 + recencyScore * 0.2 + priorityScore * 0.1;
+		// Exclude body from response — only metadata needed by the UI
+		return { id: e.id, subject: e.subject, sender: e.sender, date: e.date, relevanceScore: finalScore };
+	}).sort((a: any, b: any) => b.relevanceScore - a.relevanceScore).slice(0, limit);
+
+	return c.json({ emails: ranked });
+});
+
+// -- Contact intelligence -------------------------------------------
+
+app.get("/api/v1/mailboxes/:mailboxId/contacts/:contactEmail/intelligence", async (c: AppContext) => {
+	const contactEmail = decodeURIComponent(c.req.param("contactEmail")!);
+	const stub = c.var.mailboxStub as any;
+	const intel = await stub.getContactIntelligence(contactEmail) as Record<string, unknown> | null;
+	if (!intel) return c.json({ error: "Contact not found" }, 404);
+
+	// Run AI topic extraction on the raw subjects and replace before returning
+	const rawSubjects = (intel.topTopics as string[] | undefined) ?? [];
+	if (rawSubjects.length > 0 && !(intel.topicsExtracted as boolean)) {
+		const topics = await extractContactTopics(c.env.AI, rawSubjects);
+		intel.topTopics = topics;
+		intel.topicsExtracted = true;
+		// Persist updated intelligence with extracted topics
+		await stub.updateContactIntelligenceTopics(contactEmail, topics);
+	}
+
+	return c.json(intel);
+});
+
+// -- Automation rules -----------------------------------------------
+
+const VALID_RULE_FIELDS = new Set(["from", "to", "subject", "body", "category", "priority"]);
+const VALID_RULE_OPERATORS = new Set(["contains", "equals", "starts_with", "ends_with", "greater_than", "less_than"]);
+const VALID_ACTION_TYPES = new Set(["label", "move", "archive", "mark_read", "notify", "webhook"]);
+
+function validateRuleConditions(conditions: unknown): string | null {
+	if (!Array.isArray(conditions) || conditions.length === 0) return "conditions must be a non-empty array";
+	for (const c of conditions) {
+		if (!VALID_RULE_FIELDS.has((c as any)?.field)) return `invalid condition field: ${(c as any)?.field}`;
+		if (!VALID_RULE_OPERATORS.has((c as any)?.operator)) return `invalid condition operator: ${(c as any)?.operator}`;
+		if (typeof (c as any)?.value !== "string") return "condition value must be a string";
+	}
+	return null;
+}
+
+function validateRuleActions(actions: unknown): string | null {
+	if (!Array.isArray(actions) || actions.length === 0) return "actions must be a non-empty array";
+	for (const a of actions) {
+		if (!VALID_ACTION_TYPES.has((a as any)?.type)) return `invalid action type: ${(a as any)?.type}`;
+	}
+	return null;
+}
+
+app.get("/api/v1/mailboxes/:mailboxId/rules", async (c: AppContext) => {
+	const rules = await (c.var.mailboxStub as any).listRules();
+	return c.json(rules);
+});
+
+app.post("/api/v1/mailboxes/:mailboxId/rules", async (c: AppContext) => {
+	const body = await c.req.json() as { name: string; conditions: unknown; actions: unknown; priority?: number };
+	if (!body.name?.trim()) return c.json({ error: "name is required" }, 400);
+	const condErr = validateRuleConditions(body.conditions);
+	if (condErr) return c.json({ error: condErr }, 400);
+	const actErr = validateRuleActions(body.actions);
+	if (actErr) return c.json({ error: actErr }, 400);
+	const allRules = await (c.var.mailboxStub as any).listRules();
+	if (allRules.length >= 50) return c.json({ error: "Maximum 50 rules per mailbox" }, 422);
+	const id = await (c.var.mailboxStub as any).createRule(body);
+	return c.json({ id }, 201);
+});
+
+// Static route registered before parameterized /:ruleId to avoid ambiguity
+app.put("/api/v1/mailboxes/:mailboxId/rules/reorder", async (c: AppContext) => {
+	const { ids } = await c.req.json() as { ids: string[] };
+	if (!Array.isArray(ids)) return c.json({ error: "ids must be an array" }, 400);
+	if (ids.length > 50) return c.json({ error: "Too many IDs" }, 400);
+	await (c.var.mailboxStub as any).reorderRules(ids);
+	return c.json({ reordered: true });
+});
+
+app.put("/api/v1/mailboxes/:mailboxId/rules/:ruleId", async (c: AppContext) => {
+	const ruleId = c.req.param("ruleId")!;
+	const updates = await c.req.json() as Record<string, unknown>;
+	if (updates.conditions !== undefined) {
+		const err = validateRuleConditions(updates.conditions);
+		if (err) return c.json({ error: err }, 400);
+	}
+	if (updates.actions !== undefined) {
+		const err = validateRuleActions(updates.actions);
+		if (err) return c.json({ error: err }, 400);
+	}
+	const ok = await (c.var.mailboxStub as any).updateRule(ruleId, updates);
+	return ok ? c.json({ id: ruleId, updated: true }) : c.json({ error: "Not found" }, 404);
+});
+
+app.delete("/api/v1/mailboxes/:mailboxId/rules/:ruleId", async (c: AppContext) => {
+	const ruleId = c.req.param("ruleId")!;
+	const ok = await (c.var.mailboxStub as any).deleteRule(ruleId);
+	return ok ? c.body(null, 204) : c.json({ error: "Not found" }, 404);
 });
 
 // -- Attachments ----------------------------------------------------
@@ -768,6 +905,44 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 			}
 		} catch (e) {
 			console.error("Action item extraction failed:", (e as Error).message);
+		}
+	})());
+
+	// Embed email for semantic search (fail-open, non-blocking)
+	if ((env as any).VECTORIZE) {
+		const plainText = parsedEmail.text || stripHtmlToText(parsedEmail.html || "");
+		const embedBody = `${parsedEmail.subject || ""} ${plainText}`.trim();
+		ctx.waitUntil((async () => {
+			try {
+				const vector = await embedText(env.AI, embedBody);
+				if (vector) {
+					await upsertEmailEmbedding((env as any).VECTORIZE, mailboxId, messageId, vector, {
+						folder: "inbox",
+						date: new Date().toISOString(),
+					});
+					await (stub as any).markEmbedded(messageId);
+				}
+			} catch (e) {
+				console.error("Embedding failed:", (e as Error).message);
+			}
+		})());
+	}
+
+	// Evaluate automation rules then fire any webhook actions with ctx.waitUntil (fail-open)
+	ctx.waitUntil((async () => {
+		try {
+			const { pendingWebhooks } = await (stub as any).evaluateAndApplyRules(messageId, mailboxId, env) as { pendingWebhooks: Array<{ url: string; payload: Record<string, unknown> }> };
+			for (const wh of pendingWebhooks) {
+				ctx.waitUntil(
+					fetch(wh.url, {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify(wh.payload),
+					}).catch((e: Error) => console.error("Rule webhook failed:", e.message)),
+				);
+			}
+		} catch (e) {
+			console.error("Rule evaluation failed:", (e as Error).message);
 		}
 	})());
 
