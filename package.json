@@ -20,7 +20,7 @@
 	"scripts": {
 		"build": "react-router build",
 		"cf-typegen": "wrangler types",
-		"deploy": "npm run build && wrangler deploy",
+		"deploy": "CLOUDFLARE_ENV=production react-router build && wrangler deploy",
 		"dev": "react-router dev",
 		"preview": "npm run build && vite preview",
 		"test": "vitest run",
