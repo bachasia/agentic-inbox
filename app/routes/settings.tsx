@@ -18,8 +18,11 @@ import RichTextEditor from "~/components/RichTextEditor";
 import { useMailbox, useUpdateMailbox } from "~/queries/mailboxes";
 import { useLabels, useCreateLabel, useUpdateLabel, useDeleteLabel } from "~/queries/labels";
 import { useTemplates, useCreateTemplate, useUpdateTemplate, useDeleteTemplate } from "~/queries/templates";
+import { useRules, useCreateRule, useUpdateRule, useDeleteRule } from "~/queries/rules-query";
+import RuleBuilder from "~/components/RuleBuilder";
 import api from "~/services/api";
 import { htmlToPlainText } from "~/lib/utils";
+import { GearIcon } from "@phosphor-icons/react";
 
 const PROMPT_PLACEHOLDER = `You are an email assistant that helps manage this inbox. You read emails, draft replies, and help organize conversations.\n\nWrite like a real person. Short, direct, flowing prose. Plain text only.\n\n(Leave empty to use the full built-in default prompt)`;
 
@@ -67,6 +70,13 @@ export default function SettingsRoute() {
 	const [newTplSubject, setNewTplSubject] = useState("");
 	const [newTplBody, setNewTplBody] = useState("");
 	const [showTplForm, setShowTplForm] = useState(false);
+
+	// Automation rules state
+	const { data: rules = [] } = useRules(mailboxId);
+	const createRuleMut = useCreateRule(mailboxId!);
+	const updateRuleMut = useUpdateRule(mailboxId!);
+	const deleteRuleMut = useDeleteRule(mailboxId!);
+	const [showRuleForm, setShowRuleForm] = useState(false);
 
 	useEffect(() => {
 		if (mailbox) {
@@ -514,6 +524,65 @@ export default function SettingsRoute() {
 							</Button>
 						</div>
 					)}
+				</div>
+
+				{/* Automation Rules */}
+				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
+					<div className="flex items-center justify-between mb-4">
+						<div className="flex items-center gap-2">
+							<GearIcon size={16} className="text-kumo-subtle" />
+							<span className="text-sm font-medium text-kumo-default">Automation Rules</span>
+						</div>
+						<Button variant="secondary" size="sm" onClick={() => setShowRuleForm((v) => !v)}>
+							{showRuleForm ? "Cancel" : "New rule"}
+						</Button>
+					</div>
+
+					{showRuleForm && (
+						<div className="mb-4">
+							<RuleBuilder
+								isSaving={createRuleMut.isPending}
+								onCancel={() => setShowRuleForm(false)}
+								onSave={(data) => {
+									if (!mailboxId) return;
+									createRuleMut.mutate(data, {
+										onSuccess: () => setShowRuleForm(false),
+									});
+								}}
+							/>
+						</div>
+					)}
+
+					<div className="space-y-2">
+						{rules.map((rule) => (
+							<div key={rule.id} className="flex items-center gap-3 py-2 border-b border-kumo-line last:border-0">
+								<button
+									type="button"
+									className={`w-4 h-4 rounded border flex-shrink-0 ${rule.enabled ? "bg-kumo-accent border-kumo-accent" : "border-kumo-line bg-kumo-base"}`}
+									title={rule.enabled ? "Disable rule" : "Enable rule"}
+									onClick={() => mailboxId && updateRuleMut.mutate({ id: rule.id, updates: { enabled: !rule.enabled } })}
+								/>
+								<div className="flex-1 min-w-0">
+									<p className="text-sm text-kumo-default font-medium truncate">{rule.name}</p>
+									<p className="text-xs text-kumo-muted truncate">
+										{rule.conditions.length} condition{rule.conditions.length !== 1 ? "s" : ""} →{" "}
+										{rule.actions.map((a) => a.type).join(", ")}
+									</p>
+								</div>
+								<button
+									type="button"
+									className="text-kumo-subtle hover:text-kumo-danger transition-colors flex-shrink-0"
+									onClick={() => mailboxId && deleteRuleMut.mutate(rule.id)}
+									aria-label={`Delete rule ${rule.name}`}
+								>
+									<TrashIcon size={14} />
+								</button>
+							</div>
+						))}
+						{rules.length === 0 && !showRuleForm && (
+							<p className="text-sm text-kumo-subtle">No rules yet. Rules auto-process inbound emails.</p>
+						)}
+					</div>
 				</div>
 
 				{/* Save */}

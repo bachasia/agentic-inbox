@@ -11,8 +11,9 @@ import { Folders } from "../../shared/folders";
 import type { Env } from "../types";
 import { applyMigrations, mailboxMigrations } from "./migrations";
 import { sendEmail } from "../email-sender";
-import { sendReminderNotification, sendDigestNotification } from "../lib/notifications";
+import { sendReminderNotification, sendDigestNotification, notifyNewEmail } from "../lib/notifications";
 import { synthesizeDigest } from "../lib/ai";
+import { evaluateAllRules, isValidWebhookUrl } from "../lib/rules-engine";
 
 function nextDigestFireAt(digestTime: string): string {
 	const [h, m] = digestTime.split(":").map(Number);
@@ -1380,6 +1381,263 @@ export class MailboxDO extends DurableObject<Env> {
 		this.ctx.storage.sql.exec(
 			`DELETE FROM pending_alarms WHERE type = 'daily-digest'`,
 		);
+	}
+
+	// ── Embedding tracking (Phase 5.1) ────────────────────────────────
+
+	async markEmbedded(emailId: string): Promise<void> {
+		this.db.insert(schema.emailEmbeddings).values({
+			email_id: emailId,
+			embedded_at: new Date().toISOString(),
+		}).onConflictDoNothing().run();
+	}
+
+	async isEmbedded(emailId: string): Promise<boolean> {
+		const row = this.db.select({ email_id: schema.emailEmbeddings.email_id })
+			.from(schema.emailEmbeddings)
+			.where(eq(schema.emailEmbeddings.email_id, emailId))
+			.get();
+		return !!row;
+	}
+
+	async getEmailsByIds(ids: string[]): Promise<Array<{ id: string; subject: string | null; sender: string | null; date: string | null; body: string | null; triage_priority: number | null }>> {
+		if (ids.length === 0) return [];
+		return this.db.select({
+			id: schema.emails.id,
+			subject: schema.emails.subject,
+			sender: schema.emails.sender,
+			date: schema.emails.date,
+			body: schema.emails.body,
+			triage_priority: schema.emails.triage_priority,
+		}).from(schema.emails)
+			.where(sql`${schema.emails.id} IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`)
+			.all();
+	}
+
+	// ── Contact intelligence (Phase 5.3) ──────────────────────────────
+
+	async computeContactIntelligence(contactEmail: string): Promise<Record<string, unknown>> {
+		const email = contactEmail.toLowerCase();
+
+		// Total counts split by direction
+		const countRow = [...this.ctx.storage.sql.exec(
+			`SELECT
+				COUNT(*) as total,
+				SUM(CASE WHEN LOWER(sender) LIKE ? THEN 1 ELSE 0 END) as received,
+				SUM(CASE WHEN LOWER(recipient) LIKE ? OR LOWER(cc) LIKE ? THEN 1 ELSE 0 END) as sent
+			FROM emails
+			WHERE LOWER(sender) LIKE ? OR LOWER(recipient) LIKE ? OR LOWER(cc) LIKE ?`,
+			`%${email}%`, `%${email}%`, `%${email}%`,
+			`%${email}%`, `%${email}%`, `%${email}%`,
+		)][0] as { total: number; received: number; sent: number } | undefined;
+
+		const total = countRow?.total ?? 0;
+		const emailsReceived = countRow?.received ?? 0;
+		const emailsSent = countRow?.sent ?? 0;
+
+		// First / last contact dates
+		const datesRow = [...this.ctx.storage.sql.exec(
+			`SELECT MIN(date) as first_contact, MAX(date) as last_contact FROM emails WHERE LOWER(sender) LIKE ? OR LOWER(recipient) LIKE ?`,
+			`%${email}%`, `%${email}%`,
+		)][0] as { first_contact: string | null; last_contact: string | null } | undefined;
+
+		// Average response time: how long before user replied to this contact
+		const responseRow = [...this.ctx.storage.sql.exec(
+			`SELECT AVG((julianday(reply.date) - julianday(orig.date)) * 24) as avg_hours
+			FROM emails orig
+			JOIN emails reply ON reply.thread_id = orig.thread_id
+			WHERE LOWER(orig.sender) LIKE ?
+			  AND reply.folder_id = (SELECT id FROM folders WHERE name = 'sent' LIMIT 1)
+			  AND reply.date > orig.date`,
+			`%${email}%`,
+		)][0] as { avg_hours: number | null } | undefined;
+
+		// Recent subjects for topic extraction
+		const subjectRows = [...this.ctx.storage.sql.exec(
+			`SELECT subject FROM emails WHERE LOWER(sender) LIKE ? OR LOWER(recipient) LIKE ? ORDER BY date DESC LIMIT 20`,
+			`%${email}%`, `%${email}%`,
+		)] as Array<{ subject: string }>;
+		const subjects = subjectRows.map((r) => r.subject || "");
+
+		// Relationship score heuristic
+		const recencyDays = datesRow?.last_contact
+			? (Date.now() - new Date(datesRow.last_contact).getTime()) / 86400000
+			: 999;
+		const avgResponseHours = responseRow?.avg_hours ?? null;
+		const recencyPoints = recencyDays < 7 ? 30 : recencyDays < 30 ? 15 : 0;
+		const responsePoints = avgResponseHours !== null
+			? (avgResponseHours < 24 ? 30 : avgResponseHours < 72 ? 15 : 0)
+			: 0;
+		const frequencyPoints = Math.min(40, Math.log10(total + 1) * 20);
+		const relationshipScore = Math.round(Math.min(100, frequencyPoints + recencyPoints + responsePoints));
+
+		return {
+			totalEmails: total,
+			emailsSent,
+			emailsReceived,
+			firstContact: datesRow?.first_contact ?? null,
+			lastContact: datesRow?.last_contact ?? null,
+			avgResponseTimeHours: avgResponseHours,
+			topTopics: subjects, // raw subjects — caller runs AI extraction separately
+			relationshipScore,
+			computedAt: new Date().toISOString(),
+		};
+	}
+
+	async updateContactIntelligenceTopics(contactEmail: string, topics: string[]): Promise<void> {
+		const contact = this.db.select({ intelligence: schema.contacts.intelligence })
+			.from(schema.contacts)
+			.where(eq(schema.contacts.email, contactEmail.toLowerCase()))
+			.get();
+		if (!contact?.intelligence) return;
+		try {
+			const parsed = JSON.parse(contact.intelligence) as Record<string, unknown>;
+			parsed.topTopics = topics;
+			parsed.topicsExtracted = true;
+			this.db.update(schema.contacts)
+				.set({ intelligence: JSON.stringify(parsed) })
+				.where(eq(schema.contacts.email, contactEmail.toLowerCase()))
+				.run();
+		} catch { /* ignore parse errors */ }
+	}
+
+	async getContactIntelligence(contactEmail: string): Promise<Record<string, unknown> | null> {
+		const contact = this.db.select({ id: schema.contacts.id, intelligence: schema.contacts.intelligence })
+			.from(schema.contacts)
+			.where(eq(schema.contacts.email, contactEmail.toLowerCase()))
+			.get();
+		if (!contact) return null;
+
+		if (contact.intelligence) {
+			try {
+				const cached = JSON.parse(contact.intelligence) as Record<string, unknown>;
+				const computedAt = cached.computedAt as string | undefined;
+				if (computedAt) {
+					const ageMs = Date.now() - new Date(computedAt).getTime();
+					if (ageMs < 7 * 24 * 60 * 60 * 1000) return cached; // fresh within 7 days
+				}
+			} catch { /* recompute if JSON is malformed */ }
+		}
+
+		const stats = await this.computeContactIntelligence(contactEmail);
+		this.db.update(schema.contacts)
+			.set({ intelligence: JSON.stringify(stats) })
+			.where(eq(schema.contacts.email, contactEmail.toLowerCase()))
+			.run();
+		return stats;
+	}
+
+	// ── Automation rules CRUD (Phase 5.4) ─────────────────────────────
+
+	async createRule(rule: { name: string; conditions: unknown[]; actions: unknown[]; priority?: number }): Promise<string> {
+		const id = crypto.randomUUID();
+		const now = new Date().toISOString();
+		this.db.insert(schema.automationRules).values({
+			id, name: rule.name,
+			enabled: 1, priority: rule.priority ?? 0,
+			conditions: JSON.stringify(rule.conditions),
+			actions: JSON.stringify(rule.actions),
+			created_at: now, updated_at: now,
+		}).run();
+		return id;
+	}
+
+	async listRules(enabledOnly = false): Promise<Array<Record<string, unknown>>> {
+		const rows = this.db.select().from(schema.automationRules)
+			.where(enabledOnly ? eq(schema.automationRules.enabled, 1) : undefined)
+			.orderBy(asc(schema.automationRules.priority))
+			.all();
+		return rows.map((r) => ({
+			...r,
+			enabled: !!r.enabled,
+			conditions: JSON.parse(r.conditions as string),
+			actions: JSON.parse(r.actions as string),
+		}));
+	}
+
+	async updateRule(id: string, updates: { name?: string; enabled?: boolean; priority?: number; conditions?: unknown[]; actions?: unknown[] }): Promise<boolean> {
+		const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+		if (updates.name !== undefined) patch.name = updates.name;
+		if (updates.enabled !== undefined) patch.enabled = updates.enabled ? 1 : 0;
+		if (updates.priority !== undefined) patch.priority = updates.priority;
+		if (updates.conditions !== undefined) patch.conditions = JSON.stringify(updates.conditions);
+		if (updates.actions !== undefined) patch.actions = JSON.stringify(updates.actions);
+		const result = this.db.update(schema.automationRules).set(patch)
+			.where(eq(schema.automationRules.id, id)).run();
+		return (result as any)?.changes > 0;
+	}
+
+	async deleteRule(id: string): Promise<boolean> {
+		const result = this.db.delete(schema.automationRules)
+			.where(eq(schema.automationRules.id, id)).run();
+		return (result as any)?.changes > 0;
+	}
+
+	async reorderRules(ids: string[]): Promise<void> {
+		const now = new Date().toISOString();
+		for (let i = 0; i < ids.length; i++) {
+			this.db.update(schema.automationRules)
+				.set({ priority: i, updated_at: now })
+				.where(eq(schema.automationRules.id, ids[i]))
+				.run();
+		}
+	}
+
+	async evaluateAndApplyRules(emailId: string, mailboxId: string, env: Env): Promise<{ appliedTypes: string[]; pendingWebhooks: Array<{ url: string; payload: Record<string, unknown> }> }> {
+		const emailRow = this.db.select({
+			sender: schema.emails.sender, recipient: schema.emails.recipient,
+			subject: schema.emails.subject, body: schema.emails.body,
+			triage_category: schema.emails.triage_category, triage_priority: schema.emails.triage_priority,
+		}).from(schema.emails).where(eq(schema.emails.id, emailId)).get();
+		if (!emailRow) return { appliedTypes: [], pendingWebhooks: [] };
+
+		const rules = await this.listRules(true);
+		const actions = evaluateAllRules(emailRow as any, rules as any);
+		const pendingWebhooks: Array<{ url: string; payload: Record<string, unknown> }> = [];
+
+		for (const action of actions) {
+			try {
+				switch (action.type) {
+					case "label":
+						if (action.params?.labelId) await this.applyLabel(emailId, action.params.labelId);
+						break;
+					case "move":
+						if (action.params?.folder) await this.moveEmail(emailId, action.params.folder);
+						break;
+					case "archive":
+						await this.moveEmail(emailId, "archive");
+						break;
+					case "mark_read":
+						await this.updateEmail(emailId, { read: true });
+						break;
+					case "notify": {
+						const settingsObj = await env.BUCKET.get(`mailboxes/${mailboxId}.json`);
+						if (settingsObj) {
+							const settings = await settingsObj.json() as Record<string, any>;
+							await notifyNewEmail(settings.notifications, {
+								sender: emailRow.sender ?? "",
+								subject: `[Rule: ${action.params?.message ?? ""}] ${emailRow.subject ?? ""}`,
+								mailboxId,
+							});
+						}
+						break;
+					}
+					case "webhook":
+						// Webhook URLs are returned to the caller for ctx.waitUntil() firing
+						if (action.params?.url && isValidWebhookUrl(action.params.url)) {
+							pendingWebhooks.push({
+								url: action.params.url,
+								payload: { emailId, subject: emailRow.subject, sender: emailRow.sender },
+							});
+						}
+						break;
+				}
+			} catch (e) {
+				console.error(`Rule action ${action.type} failed:`, (e as Error).message);
+			}
+		}
+
+		return { appliedTypes: actions.map((a) => a.type), pendingWebhooks };
 	}
 
 	async createEmail(
