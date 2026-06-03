@@ -1,6 +1,6 @@
 # Phase 5: Knowledge Base & Automation
 
-**Status:** Planning
+**Status:** In Progress (5.1–5.4 complete, 5.5 pending)
 **Priority:** High
 **Depends on:** Phase 4 (Proactive AI Assistant — action items, alarms, digest)
 **Estimated effort:** 5 sub-phases (~3 weeks)
@@ -50,10 +50,10 @@ API endpoints (new):
 
 | Phase | Title | Status | Description |
 |-------|-------|--------|-------------|
-| 5.1 | [Semantic search](phase-01-semantic-search.md) | Pending | Vectorize binding, embedding pipeline, hybrid search UI |
-| 5.2 | [Q&A over email history](phase-02-qa-email-history.md) | Pending | Agent tool for natural language questions, RAG pipeline |
-| 5.3 | [Contact intelligence](phase-03-contact-intelligence.md) | Pending | Per-contact stats, topics, response times, relationship scoring |
-| 5.4 | [Rules & filters](phase-04-rules-and-filters.md) | Pending | If/then automation engine, rule builder UI, evaluate on inbound |
+| 5.1 | [Semantic search](phase-01-semantic-search.md) | **Complete** | Vectorize binding, embedding pipeline, hybrid search UI |
+| 5.2 | [Q&A over email history](phase-02-qa-email-history.md) | **Complete** | Agent tool for natural language questions, RAG pipeline |
+| 5.3 | [Contact intelligence](phase-03-contact-intelligence.md) | **Complete** | Per-contact stats, topics, response times, relationship scoring |
+| 5.4 | [Rules & filters](phase-04-rules-and-filters.md) | **Complete** | If/then automation engine, rule builder UI, evaluate on inbound |
 | 5.5 | [Webhooks & analytics](phase-05-webhooks-and-analytics.md) | Pending | Outbound event webhooks, email stats dashboard |
 
 ## Key Decisions

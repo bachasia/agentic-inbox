@@ -100,10 +100,13 @@ Metadata indexes: mailboxId (string), folder (string), date (string)
 
 ## Implementation Steps
 
-1. **Vectorize index creation** (CLI):
+1. **Vectorize index creation** (CLI — both commands required):
    ```bash
    npx wrangler vectorize create email-embeddings --dimensions 768 --metric cosine
+   # REQUIRED: create metadata index so mailboxId filter actually works
+   npx wrangler vectorize create-metadata-index email-embeddings --property-name=mailboxId --type=string
    ```
+   > Without the metadata index, `filter: { mailboxId }` is silently ignored and all mailboxes' vectors are queryable.
 
 2. **wrangler.jsonc** — add binding:
    ```jsonc

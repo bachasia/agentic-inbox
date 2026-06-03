@@ -26,7 +26,12 @@ https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
 2. **Configure Cloudflare Access** -- Enable [one-click Cloudflare Access](https://developers.cloudflare.com/changelog/post/2025-10-03-one-click-access-for-workers/) on your Worker under Settings > Domains & Routes. The modal will show your `POLICY_AUD` and `TEAM_DOMAIN` values. `TEAM_DOMAIN` can be either your Access team URL or the full `.../cdn-cgi/access/certs` URL. **You must set these as secrets for your Worker.**
 3. **Set up Email Routing** -- In the Cloudflare dashboard, go to your domain > Email Routing and create a catch-all rule that forwards to this Worker
 4. **Enable Email Service** -- The worker needs the `send_email` binding to send outbound emails. See [Email Service docs](https://developers.cloudflare.com/email-routing/email-workers/send-email-workers/)
-5. **Create a mailbox** -- Visit your deployed app and create a mailbox for any address on your domain (e.g. `hello@example.com`)
+5. **Create the Vectorize index for semantic search** -- Run both commands (the metadata index is required for per-mailbox filtering):
+   ```bash
+   npx wrangler vectorize create email-embeddings --dimensions 768 --metric cosine
+   npx wrangler vectorize create-metadata-index email-embeddings --property-name=mailboxId --type=string
+   ```
+6. **Create a mailbox** -- Visit your deployed app and create a mailbox for any address on your domain (e.g. `hello@example.com`)
 
 ### Troubleshooting Access
 
@@ -39,7 +44,10 @@ https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
 
 - **Full email client** — Send and receive emails via Cloudflare Email Routing with a rich text composer, reply/forward threading, folder organization, search, and attachments
 - **Per-mailbox isolation** — Each mailbox runs in its own Durable Object with SQLite storage and R2 for attachments
-- **Built-in AI agent** — Side panel with 9 email tools for reading, searching, drafting, and sending
+- **Built-in AI agent** — Side panel with email tools for reading, searching, drafting, sending, and semantic Q&A over email history
+- **Semantic search** — Find emails by meaning, not just keywords. Natural language queries auto-route to Cloudflare Vectorize; toggle between keyword and semantic mode in the search UI
+- **Contact intelligence** — Per-contact stats: email frequency, avg response time, relationship score, and AI-extracted discussion topics
+- **Automation rules** — If/then rules (from, subject, category, priority) with actions: label, move, archive, mark-read, notify, webhook. Evaluated on every inbound email
 - **Auto-draft on new email** — Agent automatically reads inbound emails and generates draft replies, always requiring explicit confirmation before sending
 - **Configurable and persistent** — Custom system prompts per mailbox, persistent chat history, streaming markdown responses, and tool call visibility
 
