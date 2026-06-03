@@ -5,9 +5,7 @@
 import {
 	Button,
 	Dialog,
-	Empty,
 	Input,
-	Loader,
 	Select,
 	Text,
 	useKumoToastManager,
@@ -23,6 +21,33 @@ import {
 	useMailboxes,
 } from "~/queries/mailboxes";
 import { queryKeys } from "~/queries/keys";
+import { formatRelativeDate } from "shared/dates";
+
+function getAvatarColor(email: string): string {
+	let hash = 0;
+	for (let i = 0; i < email.length; i++) {
+		hash = email.charCodeAt(i) + ((hash << 5) - hash);
+	}
+	const hue = Math.abs(hash) % 360;
+	return `hsl(${hue}, 55%, 45%)`;
+}
+
+function parseSenderName(sender: string): string {
+	const match = sender.match(/^(.+?)\s*<.+>$/);
+	return match ? match[1].trim() : sender.split("@")[0];
+}
+
+function MailboxCardSkeleton() {
+	return (
+		<div className="flex items-center gap-4 px-5 py-4 animate-pulse">
+			<div className="h-10 w-10 rounded-full bg-kumo-fill shrink-0" />
+			<div className="flex-1 space-y-2">
+				<div className="h-4 w-32 rounded bg-kumo-fill" />
+				<div className="h-3 w-48 rounded bg-kumo-fill" />
+			</div>
+		</div>
+	);
+}
 
 export function meta() {
 	return [{ title: "Agentic Inbox" }];
@@ -30,7 +55,7 @@ export function meta() {
 
 export default function HomeRoute() {
 	const toastManager = useKumoToastManager();
-	const { data: mailboxes = [], refetch: refetchMailboxes, isFetched: mailboxesFetched } = useMailboxes();
+	const { data: mailboxes = [], refetch: refetchMailboxes, isFetched: mailboxesFetched, isLoading: mailboxesLoading } = useMailboxes();
 	const createMailbox = useCreateMailbox();
 	const deleteMailbox = useDeleteMailbox();
 
@@ -129,15 +154,17 @@ export default function HomeRoute() {
 	};
 
 	const isConfigured = emailAddresses.length > 0;
-	const accounts = isConfigured
-		? emailAddresses.map((addr) => ({
-				id: addr,
-				email: addr,
-				name: addr.split("@")[0] || addr,
-			}))
-		: mailboxes;
+	const accounts = useMemo(() => {
+		if (isConfigured) {
+			return emailAddresses.map((addr) => {
+				const found = mailboxes.find(m => m.email.toLowerCase() === addr.toLowerCase());
+				return found ?? { id: addr, email: addr, name: addr.split("@")[0] || addr };
+			});
+		}
+		return mailboxes;
+	}, [isConfigured, emailAddresses, mailboxes]);
 
-	const isLoading = !configData;
+	const isLoading = !configData || mailboxesLoading;
 
 	const groupedByDomain = useMemo(() => {
 		const groups: Record<string, typeof accounts> = {};
@@ -174,8 +201,10 @@ export default function HomeRoute() {
 				</div>
 
 				{isLoading ? (
-					<div className="flex justify-center py-20">
-						<Loader size="lg" />
+					<div className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
+						<MailboxCardSkeleton />
+						<div className="border-t border-kumo-line"><MailboxCardSkeleton /></div>
+						<div className="border-t border-kumo-line"><MailboxCardSkeleton /></div>
 					</div>
 				) : accounts.length > 0 ? (
 					<div className="space-y-4">
@@ -190,24 +219,59 @@ export default function HomeRoute() {
 									</div>
 								)}
 								<div className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
-									{domainAccounts.map((account, idx) => (
+									{domainAccounts.map((account, idx) => {
+										const unreadCount = ('summary' in account ? account.summary?.inboxUnreadCount : undefined) ?? 0;
+										const hasUnread = unreadCount > 0;
+										const latestEmail = 'summary' in account ? account.summary?.latestEmail : undefined;
+										return (
 										<RouterLink
 											key={account.id}
 											to={`/mailbox/${account.id}`}
-											className={`group flex items-center gap-4 px-5 py-4 no-underline transition-colors hover:bg-kumo-tint ${
+											className={`group flex items-center gap-4 px-5 py-4 no-underline transition-all duration-150 hover:bg-kumo-tint hover:shadow-sm border-l-2 ${
 												idx > 0 ? "border-t border-kumo-line" : ""
-											}`}
+											} ${hasUnread ? "border-l-kumo-brand" : "border-l-transparent"}`}
 										>
-											<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-kumo-fill text-sm font-bold text-kumo-default">
+											<div
+												className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
+												style={{ backgroundColor: getAvatarColor(account.email) }}
+											>
 												{account.name.charAt(0).toUpperCase()}
 											</div>
 											<div className="min-w-0 flex-1">
-												<div className="text-sm font-medium text-kumo-default truncate">
-													{account.name}
+												<div className="flex items-center justify-between gap-2">
+													<span className={`text-sm text-kumo-default truncate ${hasUnread ? "font-semibold" : "font-medium"}`}>
+														{account.name}
+													</span>
+													{hasUnread && (
+														<span className="shrink-0 rounded-full bg-kumo-brand px-2 py-0.5 text-xs font-semibold text-kumo-inverse">
+															{unreadCount}
+														</span>
+													)}
 												</div>
-												<div className="text-sm text-kumo-subtle">
-													{account.email}
-												</div>
+												<div className="text-sm text-kumo-subtle">{account.email}</div>
+												{latestEmail && (
+													<div className="flex items-center justify-between gap-2 mt-1">
+														<span className="text-xs text-kumo-subtle truncate">
+															{parseSenderName(latestEmail.sender ?? "")}
+															{latestEmail.subject ? ` · ${latestEmail.subject}` : ""}
+														</span>
+														{latestEmail.date && (
+															<span className="shrink-0 text-xs text-kumo-subtle">
+																{formatRelativeDate(latestEmail.date)}
+															</span>
+														)}
+													</div>
+												)}
+												{('status' in account && (account.status?.forwardingEnabled || account.status?.autoReplyEnabled)) && (
+													<div className="flex gap-2 mt-1">
+														{account.status?.forwardingEnabled && (
+															<span className="text-xs text-kumo-subtle">⟳ Forwarding</span>
+														)}
+														{account.status?.autoReplyEnabled && (
+															<span className="text-xs text-kumo-subtle">↩ Auto-reply</span>
+														)}
+													</div>
+												)}
 											</div>
 											{!isConfigured && (
 												<Button
@@ -228,7 +292,8 @@ export default function HomeRoute() {
 												/>
 											)}
 										</RouterLink>
-									))}
+										);
+									})}
 								</div>
 							</div>
 						))}
