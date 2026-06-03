@@ -14,6 +14,7 @@ export interface EmailNotificationMeta {
 interface TelegramConfig {
 	botToken: string;
 	chatId: string;
+	topicId?: string;
 }
 
 interface DiscordConfig {
@@ -21,7 +22,7 @@ interface DiscordConfig {
 }
 
 interface NotificationsConfig {
-	telegram?: { enabled?: boolean; botToken?: string; chatId?: string };
+	telegram?: { enabled?: boolean; botToken?: string; chatId?: string; topicId?: string };
 	discord?: { enabled?: boolean; webhookUrl?: string };
 }
 
@@ -43,7 +44,7 @@ async function sendTelegramNotification(cfg: TelegramConfig, meta: EmailNotifica
 	const res = await fetch(`https://api.telegram.org/bot${cfg.botToken}/sendMessage`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ chat_id: cfg.chatId, text, parse_mode: "HTML" }),
+		body: JSON.stringify({ chat_id: cfg.chatId, text, parse_mode: "HTML", ...(cfg.topicId ? { message_thread_id: Number(cfg.topicId) } : {}) }),
 	});
 	if (!res.ok) {
 		const body = await res.text().catch(() => "");
@@ -84,7 +85,7 @@ export async function notifyNewEmail(
 	const tg = notifications.telegram;
 	if (tg?.enabled && tg.botToken && tg.chatId) {
 		tasks.push(
-			sendTelegramNotification({ botToken: tg.botToken, chatId: tg.chatId }, meta)
+			sendTelegramNotification({ botToken: tg.botToken, chatId: tg.chatId, topicId: tg.topicId }, meta)
 				.catch((e: Error) => logger.error("notifications", "Telegram notification failed", { error: e })),
 		);
 	}
@@ -125,7 +126,7 @@ export async function sendReminderNotification(
 			fetch(`https://api.telegram.org/bot${tg.botToken}/sendMessage`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ chat_id: tg.chatId, text }),
+				body: JSON.stringify({ chat_id: tg.chatId, text, ...(tg.topicId ? { message_thread_id: Number(tg.topicId) } : {}) }),
 			}).then(async (r) => {
 				if (!r.ok) throw new Error(`Telegram ${r.status}`);
 			}).catch((e: Error) => logger.error("notifications", "Reminder Telegram failed", { error: e })),
@@ -200,7 +201,7 @@ export async function sendDigestNotification(
 			fetch(`https://api.telegram.org/bot${tg.botToken}/sendMessage`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ chat_id: tg.chatId, text }),
+				body: JSON.stringify({ chat_id: tg.chatId, text, ...(tg.topicId ? { message_thread_id: Number(tg.topicId) } : {}) }),
 			}).then(async (r) => {
 				if (!r.ok) throw new Error(`Telegram ${r.status}`);
 			}).catch((e: Error) => logger.error("notifications", "Digest Telegram failed", { error: e })),
@@ -238,9 +239,9 @@ export async function testNotification(
 
 	try {
 		if (provider === "telegram") {
-			const { botToken, chatId } = settings;
+			const { botToken, chatId, topicId } = settings;
 			if (!botToken || !chatId) return { success: false, error: "botToken and chatId are required" };
-			await sendTelegramNotification({ botToken, chatId }, testMeta);
+			await sendTelegramNotification({ botToken, chatId, topicId: topicId || undefined }, testMeta);
 		} else if (provider === "discord") {
 			const { webhookUrl } = settings;
 			if (!webhookUrl) return { success: false, error: "webhookUrl is required" };

@@ -12,6 +12,7 @@ export interface TelegramSettings {
 	enabled: boolean;
 	botToken: string;
 	chatId: string;
+	topicId?: string;
 }
 
 export interface DiscordSettings {

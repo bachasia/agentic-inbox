@@ -40,6 +40,7 @@ export default function SettingsRoute() {
 	const [telegramEnabled, setTelegramEnabled] = useState(false);
 	const [telegramBotToken, setTelegramBotToken] = useState("");
 	const [telegramChatId, setTelegramChatId] = useState("");
+	const [telegramTopicId, setTelegramTopicId] = useState("");
 	const [discordEnabled, setDiscordEnabled] = useState(false);
 	const [discordWebhookUrl, setDiscordWebhookUrl] = useState("");
 	const [testingTelegram, setTestingTelegram] = useState(false);
@@ -87,6 +88,7 @@ export default function SettingsRoute() {
 			setTelegramEnabled(n?.telegram?.enabled ?? false);
 			setTelegramBotToken(n?.telegram?.botToken ?? "");
 			setTelegramChatId(n?.telegram?.chatId ?? "");
+			setTelegramTopicId(n?.telegram?.topicId ?? "");
 			setDiscordEnabled(n?.discord?.enabled ?? false);
 			setDiscordWebhookUrl(n?.discord?.webhookUrl ?? "");
 
@@ -108,7 +110,7 @@ export default function SettingsRoute() {
 			fromName: displayName,
 			agentSystemPrompt: agentPrompt.trim() || undefined,
 			notifications: {
-				telegram: { enabled: telegramEnabled, botToken: telegramBotToken, chatId: telegramChatId },
+				telegram: { enabled: telegramEnabled, botToken: telegramBotToken, chatId: telegramChatId, topicId: telegramTopicId || undefined },
 				discord: { enabled: discordEnabled, webhookUrl: discordWebhookUrl },
 			},
 			signature: {
@@ -136,7 +138,7 @@ export default function SettingsRoute() {
 		if (!mailboxId) return;
 		setTestingTelegram(true);
 		try {
-			const result = await api.testNotification(mailboxId, "telegram", { botToken: telegramBotToken, chatId: telegramChatId });
+			const result = await api.testNotification(mailboxId, "telegram", { botToken: telegramBotToken, chatId: telegramChatId, ...(telegramTopicId ? { topicId: telegramTopicId } : {}) });
 			if (result.success) {
 				toastManager.add({ title: "Telegram test sent successfully!" });
 			} else {
@@ -231,6 +233,12 @@ export default function SettingsRoute() {
 								value={telegramChatId}
 								onChange={(e) => setTelegramChatId(e.target.value)}
 								placeholder="-100123456789"
+							/>
+							<Input
+								label="Topic ID (optional)"
+								value={telegramTopicId}
+								onChange={(e) => setTelegramTopicId(e.target.value)}
+								placeholder="123"
 							/>
 						</div>
 						<div className="mt-3">
