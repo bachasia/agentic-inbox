@@ -83,6 +83,23 @@ export function formatShortDate(dateStr: string): string {
 }
 
 /**
+ * Home page card "last active" display.
+ * Returns human-readable relative time: "just now", "5m ago", "2h ago", "3d ago".
+ */
+export function formatRelativeDate(dateStr: string): string {
+	const date = safeParse(dateStr);
+	if (!date) return dateStr;
+	const diff = Date.now() - date.getTime();
+	const minutes = Math.floor(diff / 60_000);
+	if (minutes < 1) return "just now";
+	if (minutes < 60) return `${minutes}m ago`;
+	const hours = Math.floor(minutes / 60);
+	if (hours < 24) return `${hours}h ago`;
+	const days = Math.floor(hours / 24);
+	return `${days}d ago`;
+}
+
+/**
  * Compose quoted replies & backend quoted blocks.
  * "Tue, Apr 15, 2026, 3:42 PM"
  *

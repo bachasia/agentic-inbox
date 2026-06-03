@@ -631,6 +631,34 @@ export class MailboxDO extends DurableObject<Env> {
 		return result;
 	}
 
+	async getMailboxSummary() {
+		const inboxUnread = this.db
+			.select({ count: sql<number>`COUNT(*)` })
+			.from(schema.emails)
+			.where(and(
+				eq(schema.emails.folder_id, Folders.INBOX),
+				eq(schema.emails.read, 0)
+			))
+			.get();
+
+		const latestEmail = this.db
+			.select({
+				sender: schema.emails.sender,
+				subject: schema.emails.subject,
+				date: schema.emails.date,
+			})
+			.from(schema.emails)
+			.where(eq(schema.emails.folder_id, Folders.INBOX))
+			.orderBy(desc(schema.emails.date))
+			.limit(1)
+			.get();
+
+		return {
+			inboxUnreadCount: inboxUnread?.count ?? 0,
+			latestEmail: latestEmail ?? null,
+		};
+	}
+
 	async createFolder(id: string, name: string, is_deletable: number = 1) {
 		try {
 			const result = this.db

@@ -101,7 +101,26 @@ app.get("/api/v1/config", (c) => {
 
 app.get("/api/v1/mailboxes", async (c) => {
 	const allMailboxes = await listMailboxes(c.env.BUCKET);
-	return c.json(allMailboxes.map((m) => ({ ...m, name: m.id })));
+	const enriched = await Promise.all(
+		allMailboxes.map(async (m) => {
+			const stub = c.env.MAILBOX.get(c.env.MAILBOX.idFromName(m.id));
+			const [summary, settingsObj] = await Promise.all([
+				(stub as any).getMailboxSummary(),
+				c.env.BUCKET.get(`mailboxes/${m.id}.json`),
+			]);
+			const settings = settingsObj ? await settingsObj.json() as Record<string, any> : null;
+			return {
+				...m,
+				name: settings?.fromName || m.id,
+				summary,
+				status: {
+					forwardingEnabled: !!settings?.forwarding?.enabled,
+					autoReplyEnabled: !!settings?.autoReply?.enabled,
+				},
+			};
+		})
+	);
+	return c.json(enriched);
 });
 
 app.post("/api/v1/mailboxes", async (c) => {

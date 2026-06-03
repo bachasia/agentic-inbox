@@ -103,11 +103,27 @@ export interface MailboxSettings {
 	woocommerce?: WooCommerceSettings;
 }
 
+export interface MailboxSummary {
+	inboxUnreadCount: number;
+	latestEmail: {
+		sender: string | null;
+		subject: string | null;
+		date: string | null;
+	} | null;
+}
+
+export interface MailboxStatus {
+	forwardingEnabled: boolean;
+	autoReplyEnabled: boolean;
+}
+
 export interface Mailbox {
 	id: string;
 	email: string;
 	name: string;
 	settings?: MailboxSettings;
+	summary?: MailboxSummary;
+	status?: MailboxStatus;
 }
 
 export interface Email {
