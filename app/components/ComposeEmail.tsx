@@ -8,6 +8,7 @@ import { useParams } from "react-router";
 import { useComposeForm } from "~/hooks/useComposeForm";
 import RichTextEditor from "./RichTextEditor";
 import { useUIStore } from "~/hooks/useUIStore";
+import api from "~/services/api";
 
 export default function ComposeEmail() {
 	const { mailboxId, folder } = useParams<{
@@ -104,7 +105,7 @@ export default function ComposeEmail() {
 						<Text size="sm" DANGEROUS_className="font-medium mb-1.5 block">
 							Message
 						</Text>
-						<RichTextEditor value={body} onChange={setBody} />
+						<RichTextEditor value={body} onChange={setBody} onUploadImage={mailboxId ? (f) => api.uploadComposeImage(mailboxId, f) : undefined} />
 					</div>
 					<div className="flex justify-between items-center pt-2">
 						<Button

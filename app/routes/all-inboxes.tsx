@@ -56,11 +56,32 @@ export default function AllInboxesRoute() {
 					pageTitle="All Inboxes"
 				/>
 
-				<div className="px-6 lg:px-10 pt-8 pb-6">
-					<h1 className="text-3xl font-semibold tracking-tight text-kumo-default">All Inboxes</h1>
-					<p className="mt-1.5 text-sm text-kumo-subtle">
-						All emails across {mailboxes.length} connected mailbox{mailboxes.length !== 1 ? "es" : ""}.
-					</p>
+				<div className="px-6 lg:px-10 pt-8 pb-6 flex items-end justify-between gap-6 flex-wrap">
+					<div>
+						<h1 className="text-3xl font-semibold tracking-tight text-kumo-default">All Inboxes</h1>
+						<p className="mt-1.5 text-sm text-kumo-subtle">
+							All emails across {mailboxes.length} connected mailbox{mailboxes.length !== 1 ? "es" : ""}.
+						</p>
+					</div>
+					{!isLoading && total > 0 && (
+						<div className="flex items-center gap-2">
+							<div className="px-4 py-2 rounded-lg border border-kumo-line bg-kumo-base">
+								<div className="text-[11px] uppercase tracking-wider text-kumo-subtle">Mailboxes</div>
+								<div className="text-lg font-semibold text-kumo-default">{mailboxes.length}</div>
+							</div>
+							<div className="px-4 py-2 rounded-lg border border-kumo-line bg-kumo-base">
+								<div className="text-[11px] uppercase tracking-wider text-kumo-subtle">Emails</div>
+								<div className="text-lg font-semibold text-kumo-default">{total}</div>
+							</div>
+							{totalUnread > 0 && (
+								<div className="px-4 py-2 rounded-lg border border-kumo-line bg-kumo-base"
+									style={{ borderColor: "rgba(79,70,229,0.2)", background: "rgba(79,70,229,0.05)" }}>
+									<div className="text-[11px] uppercase tracking-wider text-kumo-subtle">Unread</div>
+									<div className="text-lg font-semibold" style={{ color: "var(--home-indigo)" }}>{totalUnread}</div>
+								</div>
+							)}
+						</div>
+					)}
 				</div>
 
 				<div className="px-6 lg:px-10 pb-16">
@@ -84,9 +105,10 @@ export default function AllInboxesRoute() {
 										key={email.id}
 										type="button"
 										onClick={() => navigate(`/mailbox/${email.mailboxId}/emails/inbox?email=${email.id}`)}
-										className={`w-full flex items-center gap-4 px-4 py-3 text-left hover:bg-kumo-fill transition-colors ${
+										className={`w-full flex items-center gap-4 px-4 py-3 text-left transition-colors relative ${
 											i > 0 ? "border-t border-kumo-line" : ""
-										}`}
+										} ${!email.read ? "hover:bg-[rgba(79,70,229,0.03)]" : "hover:bg-kumo-fill"}`}
+										style={!email.read ? { boxShadow: "inset 3px 0 0 var(--home-indigo)" } : undefined}
 									>
 										{/* Mailbox badge */}
 										<span className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded bg-kumo-fill border border-kumo-line text-kumo-subtle max-w-[80px] truncate">

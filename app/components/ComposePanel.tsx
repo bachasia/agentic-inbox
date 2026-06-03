@@ -3,8 +3,8 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { Banner, Button, Input } from "@cloudflare/kumo";
-import { CalendarIcon, FloppyDiskIcon, PaperPlaneTiltIcon, XIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { CalendarIcon, FloppyDiskIcon, PaperclipIcon, PaperPlaneTiltIcon, XIcon } from "@phosphor-icons/react";
+import { useRef, useState } from "react";
 import { useParams } from "react-router";
 import { useComposeForm } from "~/hooks/useComposeForm";
 import { ContactAutocomplete } from "~/components/ContactAutocomplete";
@@ -19,6 +19,8 @@ export default function ComposePanel() {
 		folder: string;
 	}>();
 
+	const attachInputRef = useRef<HTMLInputElement>(null);
+
 	const {
 		to,
 		setTo,
@@ -32,6 +34,9 @@ export default function ComposePanel() {
 		setSubject,
 		body,
 		setBody,
+		attachments,
+		addAttachments,
+		removeAttachment,
 		error,
 		isSavingDraft,
 		isSending,
@@ -201,9 +206,33 @@ export default function ComposePanel() {
 						<RichTextEditor
 							value={body}
 							onChange={setBody}
+							onUploadImage={mailboxId ? (f) => api.uploadComposeImage(mailboxId, f) : undefined}
 						/>
 					</div>
 				</div>
+
+				{/* Attachment chips */}
+				{attachments.length > 0 && (
+					<div className="px-4 pt-2 pb-1 flex flex-wrap gap-1.5 md:px-6">
+						{attachments.map((file, i) => (
+							<span
+								key={i}
+								className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full border border-kumo-line bg-kumo-base text-kumo-strong max-w-[180px]"
+							>
+								<PaperclipIcon size={11} className="shrink-0 text-kumo-subtle" />
+								<span className="truncate">{file.name}</span>
+								<button
+									type="button"
+									onClick={() => removeAttachment(i)}
+									className="shrink-0 text-kumo-subtle hover:text-red-500 transition-colors ml-0.5"
+									aria-label={`Remove ${file.name}`}
+								>
+									<XIcon size={11} />
+								</button>
+							</span>
+						))}
+					</div>
+				)}
 
 				{/* Footer actions */}
 				<div className="mt-auto px-4 py-3 border-t border-kumo-line bg-kumo-fill/30 shrink-0 md:px-6">
@@ -233,6 +262,21 @@ export default function ComposePanel() {
 							<Button type="button" variant="ghost" size="sm" onClick={closeCompose} disabled={isSending}>
 								Discard
 							</Button>
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								icon={<PaperclipIcon size={14} />}
+								onClick={() => attachInputRef.current?.click()}
+								aria-label="Attach file"
+							/>
+							<input
+								ref={attachInputRef}
+								type="file"
+								multiple
+								className="hidden"
+								onChange={(e) => { if (e.target.files) { addAttachments(e.target.files); e.target.value = ""; } }}
+							/>
 							<Button
 								type="button"
 								variant="ghost"

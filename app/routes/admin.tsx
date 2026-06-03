@@ -39,9 +39,15 @@ export default function AdminLayout() {
 							← Mailboxes
 						</RouterLink>
 						<span className="text-kumo-line">|</span>
-						<h1 className="text-sm font-semibold text-kumo-default">Admin Panel</h1>
+						<div className="flex items-center gap-1.5">
+							<span
+								className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
+								style={{ background: "var(--home-indigo)" }}
+							/>
+							<h1 className="text-sm font-semibold text-kumo-default">Admin Panel</h1>
+						</div>
 					</div>
-					<span className="text-xs text-kumo-subtle">{session.user.email}</span>
+					<span className="text-xs font-mono text-kumo-subtle">{session.user.email}</span>
 				</div>
 			</header>
 			<main className="mx-auto max-w-5xl px-4 py-8">

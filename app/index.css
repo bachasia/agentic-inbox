@@ -26,7 +26,13 @@ body {
   margin-bottom: 0.25em;
 }
 
-/* Home page brand tokens */
+/* Override Kumo's default brand color with app indigo — applies to all
+   variant="primary" buttons, unread dots, and kumo-brand Tailwind classes */
+@theme {
+  --color-kumo-brand: #4f46e5;
+  --color-kumo-inverse: #ffffff;
+}
+
 :root {
   --home-indigo: #4f46e5;
 }

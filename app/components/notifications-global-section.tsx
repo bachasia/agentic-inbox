@@ -92,12 +92,9 @@ export default function NotificationsGlobalSection({ mailboxes }: NotificationsG
 
 	return (
 		<section className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
-			<div className="px-5 py-4 border-b border-kumo-line flex items-center gap-3">
-				<div className="w-1 h-5 rounded-full shrink-0" style={{ background: "var(--home-indigo)" }} />
-				<div>
-					<h2 className="text-sm font-semibold text-kumo-default">Notifications</h2>
-					<p className="text-xs text-kumo-subtle mt-0.5">Configure notification providers and per-store routing.</p>
-				</div>
+			<div className="px-5 py-4 border-b border-kumo-line">
+				<h2 className="text-sm font-semibold text-kumo-default">Notifications</h2>
+				<p className="text-xs text-kumo-subtle mt-0.5">Configure notification providers and per-store routing.</p>
 			</div>
 			<div className="px-5 py-4 space-y-4">
 

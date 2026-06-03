@@ -21,12 +21,16 @@ function RoleBadge({ role }: { role: string }) {
 	const isAdmin = role === "admin";
 	return (
 		<span
-			className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${
-				isAdmin
-					? "bg-kumo-brand/10 text-kumo-brand"
-					: "bg-kumo-fill text-kumo-subtle"
-			}`}
+			className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium"
+			style={isAdmin
+				? { background: "rgba(79,70,229,0.08)", color: "var(--home-indigo)" }
+				: { background: "var(--kumo-fill)", color: "var(--kumo-subtle)" }
+			}
 		>
+			<span
+				className="w-1.5 h-1.5 rounded-full shrink-0"
+				style={{ background: isAdmin ? "var(--home-indigo)" : "var(--kumo-subtle)" }}
+			/>
 			{role}
 		</span>
 	);
@@ -160,7 +164,7 @@ export default function AdminIndexRoute() {
 							{users.map((user, i) => (
 								<tr
 									key={user.id}
-									className={`border-b border-kumo-line last:border-0 ${i % 2 === 0 ? "" : "bg-kumo-tint/40"}`}
+									className="border-b border-kumo-line last:border-0 hover:bg-kumo-fill transition-colors"
 								>
 									<td className="px-4 py-3 font-medium text-kumo-default">{user.name}</td>
 									<td className="px-4 py-3 text-kumo-subtle">{user.email}</td>

@@ -76,7 +76,7 @@ export default function HomeSidebar({
 				>
 					<EnvelopeIcon size={16} />
 				</div>
-				<span className="font-semibold tracking-tight text-kumo-default">Inboxly</span>
+				<span className="font-semibold tracking-tight text-kumo-default">DTC Inbox</span>
 				<span className="ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded bg-kumo-fill text-kumo-subtle">
 					PRO
 				</span>

@@ -33,14 +33,18 @@ import api from "~/services/api";
 interface RichTextEditorProps {
 	value: string;
 	onChange: (value: string) => void;
-	/** When true, shows an image upload button in the toolbar. Requires mailboxId. */
+	/** When provided, shows an image upload button in the toolbar. */
+	onUploadImage?: (file: File) => Promise<{ url: string }>;
+	/** @deprecated Use onUploadImage instead. Kept for signature editor compatibility. */
 	enableImages?: boolean;
+	/** @deprecated Use onUploadImage instead. */
 	mailboxId?: string;
 }
 
 export default function RichTextEditor({
 	value,
 	onChange,
+	onUploadImage,
 	enableImages = false,
 	mailboxId,
 }: RichTextEditorProps) {
@@ -94,14 +98,17 @@ export default function RichTextEditor({
 	}, [editor]);
 
 	const handleImageUpload = useCallback(async (file: File) => {
-		if (!editor || !mailboxId) return;
+		if (!editor) return;
+		// Prefer explicit upload function; fall back to legacy mailboxId-based upload
+		const uploadFn = onUploadImage ?? (mailboxId ? (f: File) => api.uploadSignatureImage(mailboxId, f) : null);
+		if (!uploadFn) return;
 		try {
-			const { url } = await api.uploadSignatureImage(mailboxId, file);
+			const { url } = await uploadFn(file);
 			editor.chain().focus().setImage({ src: url }).run();
 		} catch (e) {
 			console.error("Image upload failed:", (e as Error).message);
 		}
-	}, [editor, mailboxId]);
+	}, [editor, onUploadImage, mailboxId]);
 
 	const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
 		const file = e.target.files?.[0];
@@ -228,7 +235,7 @@ export default function RichTextEditor({
 					/>
 				</Tooltip>
 
-				{enableImages && (
+				{(enableImages || onUploadImage) && (
 					<>
 						<div className="mx-1 h-5 w-px bg-kumo-fill" />
 						<Tooltip content="Insert image" side="bottom" asChild>
