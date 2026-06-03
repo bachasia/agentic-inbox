@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Inbox — Inboxly</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root{
+    --background:oklch(0.985 0.003 260);
+    --foreground:oklch(0.2 0.02 260);
+    --card:#ffffff;
+    --popover:#ffffff;
+    --primary:oklch(0.55 0.22 265);
+    --primary-foreground:oklch(0.99 0 0);
+    --muted:oklch(0.97 0.004 260);
+    --muted-foreground:oklch(0.5 0.015 260);
+    --accent:oklch(0.96 0.01 265);
+    --border:oklch(0.92 0.005 260);
+    --input:oklch(0.92 0.005 260);
+    --ring:oklch(0.55 0.22 265);
+    --success:oklch(0.68 0.16 155);
+    --warning:oklch(0.78 0.16 75);
+    --chart-5:oklch(0.6 0.22 320);
+    --sidebar:oklch(0.99 0.002 260);
+    --sidebar-border:oklch(0.93 0.005 260);
+    --sidebar-accent:oklch(0.95 0.01 265);
+  }
+  html,body{background:var(--background);color:var(--foreground);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Inter,sans-serif;}
+  .bg-background{background:var(--background)} .text-foreground{color:var(--foreground)}
+  .bg-card{background:var(--card)} .bg-card\/40{background:color-mix(in oklab,var(--card) 40%,transparent)}
+  .bg-popover{background:var(--popover)}
+  .bg-primary{background:var(--primary)} .text-primary{color:var(--primary)} .text-primary-foreground{color:var(--primary-foreground)}
+  .bg-primary\/5{background:color-mix(in oklab,var(--primary) 5%,transparent)}
+  .bg-muted{background:var(--muted)} .bg-muted\/40{background:color-mix(in oklab,var(--muted) 40%,transparent)}
+  .text-muted-foreground{color:var(--muted-foreground)}
+  .bg-accent{background:var(--accent)} .bg-accent\/50{background:color-mix(in oklab,var(--accent) 50%,transparent)}
+  .hover\:bg-accent:hover{background:var(--accent)} .hover\:bg-accent\/50:hover{background:color-mix(in oklab,var(--accent) 50%,transparent)}
+  .border-border{border-color:var(--border)} .border-border\/60{border-color:color-mix(in oklab,var(--border) 60%,transparent)}
+  .border-input{border-color:var(--input)}
+  .divide-border > * + *{border-color:var(--border)}
+  .bg-sidebar{background:var(--sidebar)} .border-sidebar-border{border-color:var(--sidebar-border)}
+  .text-sidebar-foreground{color:var(--foreground)}
+  .bg-sidebar-accent{background:var(--sidebar-accent)} .hover\:bg-sidebar-accent\/60:hover{background:color-mix(in oklab,var(--sidebar-accent) 60%,transparent)}
+  .text-sidebar-accent-foreground{color:var(--foreground)}
+  .fill-warning{fill:var(--warning)} .text-warning{color:var(--warning)}
+  .text-success{color:var(--success)} .bg-success\/10{background:color-mix(in oklab,var(--success) 10%,transparent)}
+  .from-primary{--tw-gradient-from:var(--primary)} .to-chart-5{--tw-gradient-to:var(--chart-5)}
+  .ring-ring\/30:focus{box-shadow:0 0 0 2px color-mix(in oklab,var(--ring) 30%,transparent)}
+  .focus\:border-ring:focus{border-color:var(--ring)}
+  [data-avatar]{display:grid;place-items:center;color:#fff;font-weight:600}
+  /* Lucide icon defaults */
+  .lucide{width:1em;height:1em;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;fill:none;display:inline-block;vertical-align:-0.125em;flex-shrink:0}
+</style>
+</head>
+<body>
+
+<!-- Inline SVG icon sprite (Lucide) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-inbox" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/></symbol>
+    <symbol id="i-archive" viewBox="0 0 24 24"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></symbol>
+    <symbol id="i-chevron-left" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/></symbol>
+    <symbol id="i-reply" viewBox="0 0 24 24"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></symbol>
+    <symbol id="i-reply-all" viewBox="0 0 24 24"><polyline points="7 17 2 12 7 7"/><polyline points="12 17 7 12 12 7"/><path d="M22 18v-2a4 4 0 0 0-4-4H7"/></symbol>
+    <symbol id="i-forward" viewBox="0 0 24 24"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol>
+    <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.93 8.8l-8.57 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></symbol>
+    <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></symbol>
+    <symbol id="i-corner-up-left" viewBox="0 0 24 24"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></symbol>
+    <symbol id="i-command" viewBox="0 0 24 24"><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/></symbol>
+    <symbol id="i-bot" viewBox="0 0 24 24"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></symbol>
+    <symbol id="i-list-filter" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/></symbol>
+  </defs>
+</svg>
+
+<div class="min-h-screen flex">
+
+  <!-- Sidebar -->
+  <aside class="hidden md:flex w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar sticky top-0 h-screen">
+    <div class="p-3 border-b border-sidebar-border">
+      <button class="w-full flex items-center gap-2.5 p-2 rounded-lg hover:bg-sidebar-accent transition">
+        <div data-avatar class="size-8 rounded-lg text-sm" style="background:linear-gradient(135deg,oklch(0.65 0.18 95),oklch(0.55 0.22 120))">S</div>
+        <div class="min-w-0 flex-1 text-left">
+          <div class="text-[11px] text-muted-foreground uppercase tracking-wider">Mailbox</div>
+          <div class="text-xs font-mono truncate">support@kozmozracing.com</div>
+        </div>
+        <svg class="lucide text-muted-foreground" style="font-size:16px"><use href="#i-chevron-down"/></svg>
+      </button>
+    </div>
+
+    <button class="mx-3 mt-3 h-9 rounded-lg bg-primary text-primary-foreground text-sm font-medium shadow-sm hover:opacity-90 transition inline-flex items-center justify-center gap-1.5">
+      <svg class="lucide" style="font-size:16px"><use href="#i-mail"/></svg> Compose
+    </button>
+
+    <nav class="px-2 py-3 space-y-0.5 text-sm">
+      <button class="w-full flex items-center gap-2.5 px-2.5 h-9 rounded-lg bg-sidebar-accent text-sidebar-accent-foreground font-medium">
+        <svg class="lucide" style="font-size:16px"><use href="#i-inbox"/></svg><span>Inbox</span>
+        <span class="ml-auto text-[11px] px-1.5 py-0.5 rounded-md bg-card border border-border text-muted-foreground">2</span>
+      </button>
+      <button class="w-full flex items-center gap-2.5 px-2.5 h-9 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent/60">
+        <svg class="lucide" style="font-size:16px"><use href="#i-star"/></svg><span>Starred</span>
+        <span class="ml-auto text-[11px] px-1.5 py-0.5 rounded-md bg-card border border-border text-muted-foreground">2</span>
+      </button>
+      <button class="w-full flex items-center gap-2.5 px-2.5 h-9 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent/60"><svg class="lucide" style="font-size:16px"><use href="#i-send"/></svg><span>Sent</span></button>
+      <button class="w-full flex items-center gap-2.5 px-2.5 h-9 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent/60"><svg class="lucide" style="font-size:16px"><use href="#i-archive"/></svg><span>Archive</span></button>
+      <button class="w-full flex items-center gap-2.5 px-2.5 h-9 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent/60"><svg class="lucide" style="font-size:16px"><use href="#i-trash"/></svg><span>Trash</span></button>
+    </nav>
+
+    <div class="px-3 mt-2">
+      <div class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground px-2 mb-2">Labels</div>
+      <div class="space-y-0.5 text-xs">
+        <button class="w-full flex items-center gap-2 px-2.5 h-7 rounded-md text-muted-foreground hover:bg-sidebar-accent/60"><svg class="lucide" style="font-size:12px"><use href="#i-tag"/></svg> orders</button>
+        <button class="w-full flex items-center gap-2 px-2.5 h-7 rounded-md text-muted-foreground hover:bg-sidebar-accent/60"><svg class="lucide" style="font-size:12px"><use href="#i-tag"/></svg> finance</button>
+        <button class="w-full flex items-center gap-2 px-2.5 h-7 rounded-md text-muted-foreground hover:bg-sidebar-accent/60"><svg class="lucide" style="font-size:12px"><use href="#i-tag"/></svg> legal</button>
+        <button class="w-full flex items-center gap-2 px-2.5 h-7 rounded-md text-muted-foreground hover:bg-sidebar-accent/60"><svg class="lucide" style="font-size:12px"><use href="#i-tag"/></svg> product</button>
+        <button class="w-full flex items-center gap-2 px-2.5 h-7 rounded-md text-muted-foreground hover:bg-sidebar-accent/60"><svg class="lucide" style="font-size:12px"><use href="#i-tag"/></svg> dev</button>
+      </div>
+    </div>
+
+    <div class="mt-auto p-3 space-y-2">
+      <button class="w-full flex items-center gap-2 px-2.5 h-9 rounded-lg text-xs text-muted-foreground hover:bg-sidebar-accent/60 border border-sidebar-border bg-card">
+        <svg class="lucide" style="font-size:14px"><use href="#i-command"/></svg><span>Quick search</span>
+        <span class="ml-auto font-mono text-[10px] px-1.5 py-0.5 rounded bg-muted">⌘K</span>
+      </button>
+      <button class="w-full flex items-center gap-2.5 px-2.5 h-9 rounded-lg text-sm text-sidebar-foreground hover:bg-sidebar-accent/60"><svg class="lucide" style="font-size:16px"><use href="#i-settings"/></svg> Settings</button>
+    </div>
+  </aside>
+
+  <!-- Thread list -->
+  <section class="w-[320px] shrink-0 border-r border-border flex flex-col h-screen sticky top-0">
+    <div class="p-3 border-b border-border space-y-3 bg-card/40">
+      <div class="flex items-center gap-2">
+        <h2 class="text-sm font-semibold tracking-tight">Inbox</h2>
+        <span class="text-[11px] text-muted-foreground">2 unread · 5 total</span>
+        <button class="ml-auto size-7 grid place-items-center rounded-md hover:bg-accent text-muted-foreground"><svg class="lucide" style="font-size:16px"><use href="#i-list-filter"/></svg></button>
+      </div>
+      <div class="relative">
+        <svg class="lucide text-muted-foreground absolute left-2.5 top-1/2 -translate-y-1/2" style="font-size:14px"><use href="#i-search"/></svg>
+        <input placeholder="Search this mailbox…" class="h-8 w-full rounded-md border border-input bg-background pl-8 pr-2 text-xs outline-none focus:ring-2 ring-ring/30 focus:border-ring transition" />
+      </div>
+    </div>
+    <div class="overflow-y-auto flex-1" id="thread-list"></div>
+  </section>
+
+  <!-- Thread view -->
+  <section class="flex-1 min-w-0 flex flex-col h-screen sticky top-0">
+    <div class="border-b border-border bg-background/80 backdrop-blur-xl">
+      <div class="px-5 h-12 flex items-center gap-2">
+        <button class="size-8 grid place-items-center rounded-md hover:bg-accent text-muted-foreground"><svg class="lucide" style="font-size:16px"><use href="#i-chevron-left"/></svg></button>
+        <button title="Archive · E" class="size-8 grid place-items-center rounded-md hover:bg-accent text-muted-foreground"><svg class="lucide" style="font-size:16px"><use href="#i-archive"/></svg></button>
+        <button title="Delete · #" class="size-8 grid place-items-center rounded-md hover:bg-accent text-muted-foreground"><svg class="lucide" style="font-size:16px"><use href="#i-trash"/></svg></button>
+        <div class="w-px h-5 bg-border mx-1"></div>
+        <button title="Reply · R" class="size-8 grid place-items-center rounded-md hover:bg-accent text-muted-foreground"><svg class="lucide" style="font-size:16px"><use href="#i-reply"/></svg></button>
+        <button title="Reply all · A" class="size-8 grid place-items-center rounded-md hover:bg-accent text-muted-foreground"><svg class="lucide" style="font-size:16px"><use href="#i-reply-all"/></svg></button>
+        <button title="Forward · F" class="size-8 grid place-items-center rounded-md hover:bg-accent text-muted-foreground"><svg class="lucide" style="font-size:16px"><use href="#i-forward"/></svg></button>
+        <div class="ml-auto flex items-center gap-1">
+          <button class="size-8 grid place-items-center rounded-md hover:bg-accent text-muted-foreground"><svg class="lucide" style="font-size:16px"><use href="#i-star"/></svg></button>
+          <button class="size-8 grid place-items-center rounded-md hover:bg-accent text-muted-foreground"><svg class="lucide" style="font-size:16px"><use href="#i-tag"/></svg></button>
+          <button class="size-8 grid place-items-center rounded-md hover:bg-accent text-muted-foreground"><svg class="lucide" style="font-size:16px"><use href="#i-sparkles"/></svg></button>
+          <button class="size-8 grid place-items-center rounded-md hover:bg-accent text-muted-foreground"><svg class="lucide" style="font-size:16px"><use href="#i-more"/></svg></button>
+        </div>
+      </div>
+      <div class="px-5 pb-4">
+        <h1 class="text-xl font-semibold tracking-tight leading-snug">New order #10428 from Maria Chen</h1>
+        <div class="mt-2 flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+          <div class="flex items-center gap-1.5">
+            <img src="https://www.google.com/s2/favicons?domain=shopify.com&sz=32" alt="" class="size-4 rounded" />
+            <span class="font-medium text-foreground">Shopify Orders</span>
+            <span class="font-mono">&lt;no-reply@shopify.com&gt;</span>
+          </div>
+          <span>·</span><span>to me</span><span>·</span><span>Today, 9:42</span>
+          <div class="ml-auto flex gap-1">
+            <span class="text-[9px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground uppercase tracking-wider">orders</span>
+            <span class="text-[9px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground uppercase tracking-wider">paid</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex-1 overflow-y-auto">
+      <div class="max-w-3xl mx-auto px-6 py-8">
+        <div class="rounded-xl border border-border bg-card overflow-hidden">
+          <div class="px-4 py-2.5 border-b border-border bg-muted/40 flex items-center gap-2 text-xs">
+            <svg class="lucide text-primary" style="font-size:14px"><use href="#i-sparkles"/></svg>
+            <span class="font-medium">Structured fields</span>
+            <span class="text-muted-foreground">· auto-detected 9 values</span>
+          </div>
+          <dl class="divide-y divide-border" id="fields"></dl>
+        </div>
+
+        <div class="mt-8 pt-6 border-t border-border">
+          <div class="rounded-xl border border-border bg-card p-4">
+            <div class="flex items-center gap-2 text-xs text-muted-foreground mb-3"><svg class="lucide" style="font-size:14px"><use href="#i-corner-up-left"/></svg> Reply to Shopify Orders</div>
+            <textarea placeholder="Write a reply…" class="w-full min-h-[100px] resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground"></textarea>
+            <div class="flex items-center gap-2 pt-3 border-t border-border mt-2">
+              <button class="size-8 grid place-items-center rounded-md hover:bg-accent text-muted-foreground"><svg class="lucide" style="font-size:16px"><use href="#i-paperclip"/></svg></button>
+              <button class="text-xs px-2 py-1 rounded-md hover:bg-accent text-muted-foreground inline-flex items-center gap-1"><svg class="lucide" style="font-size:14px"><use href="#i-sparkles"/></svg> Draft with AI</button>
+              <button class="ml-auto h-8 px-3 inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium shadow-sm hover:opacity-90 transition"><svg class="lucide" style="font-size:14px"><use href="#i-send"/></svg> Send</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- AI panel -->
+  <aside class="hidden xl:flex w-[360px] shrink-0 border-l border-border bg-card/40 flex-col h-screen sticky top-0">
+    <div class="px-4 h-12 border-b border-border flex items-center gap-2">
+      <div class="size-7 rounded-lg grid place-items-center text-white" style="background:linear-gradient(135deg,var(--primary),var(--chart-5))"><svg class="lucide" style="font-size:14px"><use href="#i-sparkles"/></svg></div>
+      <div class="font-semibold text-sm">Assistant</div>
+      <button class="ml-auto size-7 grid place-items-center rounded-md hover:bg-accent text-muted-foreground"><svg class="lucide" style="font-size:16px"><use href="#i-more"/></svg></button>
+    </div>
+    <div class="px-4 pt-3 border-b border-border">
+      <div class="flex gap-1">
+        <button class="relative px-3 h-9 inline-flex items-center gap-1.5 text-xs font-medium border-b-2 -mb-px border-primary text-foreground"><svg class="lucide" style="font-size:14px"><use href="#i-bot"/></svg> Agent</button>
+        <button class="relative px-3 h-9 inline-flex items-center gap-1.5 text-xs font-medium border-b-2 -mb-px border-transparent text-muted-foreground hover:text-foreground"><svg class="lucide" style="font-size:14px"><use href="#i-plug"/></svg> MCP <span class="text-[9px] px-1 rounded bg-muted text-muted-foreground font-mono">3</span></button>
+      </div>
+    </div>
+    <div class="flex-1 overflow-y-auto p-4 space-y-3">
+      <div class="rounded-lg border border-border bg-background p-3 text-xs leading-relaxed">
+        <div class="font-medium mb-1 flex items-center gap-1.5"><svg class="lucide text-primary" style="font-size:12px"><use href="#i-sparkles"/></svg> Summary</div>
+        <p class="text-muted-foreground">New paid order from <b class="text-foreground">Maria Chen</b> totaling <b class="text-foreground">$128.40</b>. Ships to London via standard shipping (3–5 days). No issues flagged.</p>
+      </div>
+      <div class="rounded-lg border border-border bg-background p-3 text-xs">
+        <div class="font-medium mb-2">Suggested actions</div>
+        <div class="space-y-1.5">
+          <button class="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md hover:bg-accent"><svg class="lucide text-muted-foreground" style="font-size:12px"><use href="#i-chevron-right"/></svg>Confirm order with customer</button>
+          <button class="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md hover:bg-accent"><svg class="lucide text-muted-foreground" style="font-size:12px"><use href="#i-chevron-right"/></svg>Create Shopify fulfillment</button>
+          <button class="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md hover:bg-accent"><svg class="lucide text-muted-foreground" style="font-size:12px"><use href="#i-chevron-right"/></svg>Add to Q2 revenue report</button>
+        </div>
+      </div>
+    </div>
+    <div class="p-3 border-t border-border bg-background/80 backdrop-blur">
+      <div class="flex gap-1.5 mb-2 flex-wrap">
+        <button class="text-[11px] px-2 py-1 rounded-md border border-border bg-card hover:bg-accent text-muted-foreground inline-flex items-center gap-1"><svg class="lucide" style="font-size:12px"><use href="#i-sparkles"/></svg> Summarize</button>
+        <button class="text-[11px] px-2 py-1 rounded-md border border-border bg-card hover:bg-accent text-muted-foreground inline-flex items-center gap-1"><svg class="lucide" style="font-size:12px"><use href="#i-sparkles"/></svg> Draft reply</button>
+        <button class="text-[11px] px-2 py-1 rounded-md border border-border bg-card hover:bg-accent text-muted-foreground inline-flex items-center gap-1"><svg class="lucide" style="font-size:12px"><use href="#i-sparkles"/></svg> Extract data</button>
+      </div>
+      <div class="rounded-xl border border-border bg-card">
+        <textarea placeholder="Ask the assistant…" class="w-full min-h-[60px] resize-none bg-transparent text-sm p-3 outline-none placeholder:text-muted-foreground"></textarea>
+        <div class="flex items-center gap-1 px-2 pb-2">
+          <button class="size-7 grid place-items-center rounded-md hover:bg-accent text-muted-foreground"><svg class="lucide" style="font-size:14px"><use href="#i-paperclip"/></svg></button>
+          <span class="text-[10px] text-muted-foreground ml-1">Enter to send · Shift+Enter newline</span>
+          <button class="ml-auto size-7 grid place-items-center rounded-md bg-primary text-primary-foreground"><svg class="lucide" style="font-size:14px"><use href="#i-send"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script>
+const THREADS = [
+  {id:"t1",from:"Shopify Orders",subject:"New order #10428 from Maria Chen",preview:"Order Number: #10428 · Total: $128.40 · Items: 2 · Ship to: ...",time:"9:42",unread:true,starred:true,labels:["orders","paid"],hue:145},
+  {id:"t2",from:"Stripe",subject:"Your payout of $4,210.55 is on the way",preview:"Payout ID: po_1Q… · Amount: $4,210.55 · Arrival: Jun 4 …",time:"8:10",unread:true,starred:false,labels:["finance"],hue:265},
+  {id:"t3",from:"Linear",subject:"[INB-204] Agent panel — sticky input + quick actions",preview:"Tuan assigned this issue to you. Priority: High · Status: ...",time:"Yesterday",unread:false,starred:false,labels:["product"],hue:220},
+  {id:"t4",from:"DMCA Bot",subject:"Takedown request — listing #88421",preview:"Claimant: Speedline Inc. · URL: /products/wheels-22 · ...",time:"Mon",unread:false,starred:false,labels:["legal","urgent"],hue:15},
+  {id:"t5",from:"GitHub",subject:"PR #142 ready for review — feat/inbox-parser",preview:"Author: tuan · Branch: feat/inbox-parser → main · Files: 12 ...",time:"Sun",unread:false,starred:true,labels:["dev"],hue:280},
+];
+const FIELDS = [
+  ["Order Number","#10428"],["Customer","Maria Chen"],["Email","maria@chen.io"],
+  ["Total","$128.40"],["Items","2"],["Shipping","Standard (3-5 days)"],
+  ["Ship to","221B Baker Street, London"],["Payment","Visa ending 4242"],["Status","Paid"]
+];
+document.getElementById("thread-list").innerHTML = THREADS.map((t,i)=>`
+  <button class="w-full text-left px-3 py-3 border-b border-border/60 relative ${i===0?'bg-primary/5':'hover:bg-accent/50'}">
+    ${i===0?'<div class="absolute left-0 top-2 bottom-2 w-0.5 rounded-r bg-primary"></div>':''}
+    <div class="flex items-start gap-2.5">
+      <div data-avatar class="size-8 rounded-lg text-xs mt-0.5 shrink-0" style="background:linear-gradient(135deg,oklch(0.65 0.18 ${t.hue}),oklch(0.55 0.22 ${t.hue+25}))">${t.from[0]}</div>
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-1.5">
+          <span class="text-sm truncate ${t.unread?'font-semibold':'font-medium text-muted-foreground'}">${t.from}</span>
+          ${t.starred?'<svg class="lucide text-warning" style="font-size:12px;fill:var(--warning)"><use href="#i-star"/></svg>':''}
+          <span class="ml-auto text-[10px] text-muted-foreground shrink-0">${t.time}</span>
+        </div>
+        <div class="text-xs truncate mt-0.5 ${t.unread?'text-foreground font-medium':'text-muted-foreground'}">${t.subject}</div>
+        <div class="text-[11px] text-muted-foreground truncate mt-0.5">${t.preview}</div>
+        <div class="flex gap-1 mt-1.5">${t.labels.map(l=>`<span class="text-[9px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground uppercase tracking-wider">${l}</span>`).join("")}</div>
+      </div>
+      ${t.unread?'<div class="size-2 rounded-full bg-primary shrink-0 mt-1.5"></div>':''}
+    </div>
+  </button>`).join("");
+document.getElementById("fields").innerHTML = FIELDS.map(([k,v])=>`
+  <div class="grid grid-cols-[160px_1fr] gap-4 px-4 py-2.5 text-sm">
+    <dt class="text-muted-foreground text-xs font-medium uppercase tracking-wider self-center">${k}</dt>
+    <dd class="font-mono text-sm">${v}</dd>
+  </div>`).join("");
+</script>
+</body>
+</html>

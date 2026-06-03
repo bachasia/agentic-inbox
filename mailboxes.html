@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mailboxes — Inbox Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --radius: 0.75rem;
+      --background: #fafafa;
+      --foreground: #171717;
+      --card: #ffffff;
+      --card-foreground: #171717;
+      --primary: #4f46e5;
+      --primary-foreground: #ffffff;
+      --secondary: #f4f4f5;
+      --secondary-foreground: #27272a;
+      --muted: #f4f4f5;
+      --muted-foreground: #71717a;
+      --accent: #f4f4f5;
+      --accent-foreground: #27272a;
+      --border: #e4e4e7;
+      --input: #e4e4e7;
+      --ring: #4f46e5;
+      --success: #10b981;
+      --sidebar: #fafafa;
+      --sidebar-foreground: #3f3f46;
+      --sidebar-accent: #f4f4f5;
+      --sidebar-accent-foreground: #27272a;
+      --sidebar-border: #e4e4e7;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--background);
+      color: var(--foreground);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    .app { display: flex; }
+
+    /* Sidebar */
+    .sidebar {
+      width: 256px;
+      min-height: 100vh;
+      border-right: 1px solid var(--sidebar-border);
+      background: var(--sidebar);
+      display: flex;
+      flex-direction: column;
+      position: sticky;
+      top: 0;
+    }
+    .sidebar-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 20px;
+      height: 64px;
+      border-bottom: 1px solid var(--sidebar-border);
+    }
+    .logo-icon {
+      width: 32px; height: 32px;
+      border-radius: 8px;
+      background: var(--primary);
+      display: grid;
+      place-items: center;
+      color: var(--primary-foreground);
+    }
+    .logo-text { font-weight: 600; letter-spacing: -0.025em; }
+    .pro-badge {
+      margin-left: auto;
+      font-size: 10px;
+      font-weight: 500;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--accent);
+      color: var(--accent-foreground);
+    }
+
+    .nav { padding: 12px; }
+    .nav-item {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 14px;
+      border: none;
+      background: none;
+      color: var(--sidebar-foreground);
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: inherit;
+    }
+    .nav-item:hover { background: rgba(0,0,0,0.04); }
+    .nav-item.active {
+      background: var(--sidebar-accent);
+      color: var(--sidebar-accent-foreground);
+      font-weight: 500;
+    }
+    .nav-badge {
+      margin-left: auto;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--muted-foreground);
+    }
+
+    .domains-section { padding: 0 12px 12px; }
+    .domains-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted-foreground);
+      padding: 0 10px;
+      margin-bottom: 8px;
+    }
+    .domain-pill {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      border: none;
+      background: none;
+      color: var(--muted-foreground);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .domain-pill:hover {
+      background: rgba(0,0,0,0.04);
+      color: var(--sidebar-foreground);
+    }
+    .domain-pill.active {
+      background: var(--sidebar-accent);
+      color: var(--sidebar-accent-foreground);
+    }
+    .domain-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      border: 2px solid currentColor;
+      flex-shrink: 0;
+    }
+    .domain-count { margin-left: auto; opacity: 0.7; }
+
+    .user-card {
+      margin-top: auto;
+      padding: 12px;
+    }
+    .user-card-inner {
+      border-radius: 12px;
+      border: 1px solid var(--sidebar-border);
+      background: var(--card);
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .user-avatar {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary), #a855f7);
+      display: grid;
+      place-items: center;
+      color: white;
+      font-size: 12px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .user-name { font-size: 14px; font-weight: 500; }
+    .user-email { font-size: 12px; color: var(--muted-foreground); }
+
+    /* Main Content */
+    .main { flex: 1; min-width: 0; }
+
+    /* Top Bar */
+    .top-bar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(250,250,250,0.8);
+      backdrop-filter: blur(24px);
+      border-bottom: 1px solid var(--border);
+    }
+    .top-bar-inner {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 40px;
+      height: 64px;
+    }
+    .breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: var(--muted-foreground);
+    }
+    .breadcrumb-current { color: var(--foreground); font-weight: 500; }
+    .top-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    .search-box {
+      position: relative;
+    }
+    .search-box svg {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted-foreground);
+      width: 16px; height: 16px;
+    }
+    .search-input {
+      height: 36px;
+      width: 288px;
+      border-radius: 8px;
+      border: 1px solid var(--input);
+      background: var(--card);
+      padding-left: 36px;
+      padding-right: 12px;
+      font-size: 14px;
+      outline: none;
+      transition: all 0.15s;
+      font-family: inherit;
+    }
+    .search-input:focus {
+      border-color: var(--ring);
+      box-shadow: 0 0 0 3px rgba(79,70,229,0.1);
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 36px;
+      padding: 0 12px;
+      border-radius: 8px;
+      border: 1px solid var(--input);
+      background: var(--card);
+      font-size: 14px;
+      color: var(--foreground);
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+    .btn:hover { background: var(--accent); }
+    .btn-primary {
+      background: var(--primary);
+      color: var(--primary-foreground);
+      border-color: var(--primary);
+      font-weight: 500;
+    }
+    .btn-primary:hover { opacity: 0.9; background: var(--primary); }
+
+    /* Header */
+    .header {
+      padding: 32px 40px 24px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    .header-title {
+      font-size: 30px;
+      font-weight: 600;
+      letter-spacing: -0.025em;
+    }
+    .header-subtitle {
+      margin-top: 6px;
+      font-size: 14px;
+      color: var(--muted-foreground);
+    }
+    .stats { display: flex; align-items: center; gap: 8px; }
+    .stat {
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--card);
+    }
+    .stat.accent {
+      border-color: rgba(79,70,229,0.2);
+      background: rgba(79,70,229,0.05);
+    }
+    .stat-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted-foreground);
+    }
+    .stat-value {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .stat.accent .stat-value { color: var(--primary); }
+
+    /* Groups */
+    .groups { padding: 0 40px 64px; }
+    .group { margin-bottom: 40px; }
+    .group-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .group-header-inner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .group-header h2 {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .group-header .count {
+      font-size: 12px;
+      color: var(--muted-foreground);
+    }
+    .divider {
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* Grid */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 16px;
+    }
+
+    /* Mailbox Card */
+    .mailbox-card {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      transition: all 0.2s;
+      position: relative;
+    }
+    .mailbox-card:hover {
+      box-shadow: 0 8px 30px -12px rgba(79,70,229,0.15);
+      border-color: rgba(79,70,229,0.3);
+    }
+    .card-top {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .card-avatar {
+      width: 44px; height: 44px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      color: white;
+      font-weight: 600;
+      font-size: 16px;
+      flex-shrink: 0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .card-info { min-width: 0; flex: 1; }
+    .card-name-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-name {
+      font-size: 14px;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      font-weight: 500;
+      padding: 2px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .status-badge.active {
+      background: rgba(16,185,129,0.1);
+      color: #059669;
+    }
+    .status-badge.idle {
+      background: var(--muted);
+      color: var(--muted-foreground);
+    }
+    .status-dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+    }
+    .status-dot.active { background: currentColor; }
+    .status-dot.idle { background: var(--muted-foreground); opacity: 0.5; }
+    .card-email {
+      font-size: 12px;
+      color: var(--muted-foreground);
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-top: 2px;
+    }
+    .card-menu {
+      opacity: 0;
+      width: 28px; height: 28px;
+      border-radius: 6px;
+      border: none;
+      background: none;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      color: var(--muted-foreground);
+      transition: all 0.15s;
+      flex-shrink: 0;
+    }
+    .mailbox-card:hover .card-menu { opacity: 1; }
+    .card-menu:hover { background: var(--accent); }
+
+    .card-bottom {
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+    }
+    .unread-info {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted-foreground);
+    }
+    .unread-count { font-weight: 600; color: var(--foreground); }
+    .open-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--primary);
+      font-weight: 500;
+      text-decoration: none;
+      transition: gap 0.15s;
+    }
+    .open-btn:hover { gap: 8px; }
+
+    /* Add Card */
+    .add-card {
+      border-radius: 12px;
+      border: 1px dashed var(--border);
+      min-height: 148px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 14px;
+      color: var(--muted-foreground);
+      cursor: pointer;
+      transition: all 0.2s;
+      background: transparent;
+    }
+    .add-card:hover {
+      border-color: rgba(79,70,229,0.5);
+      background: rgba(79,70,229,0.03);
+      color: var(--foreground);
+    }
+    .add-icon {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      border: 1px dashed var(--border);
+      display: grid;
+      place-items: center;
+      transition: all 0.2s;
+    }
+    .add-card:hover .add-icon {
+      border-color: rgba(79,70,229,0.5);
+    }
+
+    /* Empty */
+    .empty {
+      text-align: center;
+      padding: 80px 20px;
+      color: var(--muted-foreground);
+      font-size: 14px;
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .sidebar { display: none; }
+      .top-bar-inner, .header, .groups { padding-left: 24px; padding-right: 24px; }
+    }
+    @media (max-width: 640px) {
+      .grid { grid-template-columns: 1fr; }
+      .header { flex-direction: column; align-items: flex-start; }
+      .stats { width: 100%; }
+      .search-input { width: 200px; }
+      .top-bar-inner { padding-left: 16px; padding-right: 16px; }
+      .header, .groups { padding-left: 16px; padding-right: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+        </div>
+        <div class="logo-text">Inboxly</div>
+        <span class="pro-badge">PRO</span>
+      </div>
+
+      <nav class="nav">
+        <button class="nav-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          All inboxes
+          <span class="nav-badge">16</span>
+        </button>
+        <button class="nav-item active">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+          Mailboxes
+        </button>
+        <button class="nav-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          Domains
+          <span class="nav-badge">4</span>
+        </button>
+        <button class="nav-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+          Settings
+        </button>
+      </nav>
+
+      <div class="domains-section">
+        <div class="domains-title">Domains</div>
+        <button class="domain-pill active">
+          <span class="domain-dot"></span>
+          <span>All domains</span>
+          <span class="domain-count">5</span>
+        </button>
+        <button class="domain-pill">
+          <span class="domain-dot"></span>
+          <span>ezcustomcar.com</span>
+          <span class="domain-count">1</span>
+        </button>
+        <button class="domain-pill">
+          <span class="domain-dot"></span>
+          <span>kozmozracing.com</span>
+          <span class="domain-count">2</span>
+        </button>
+        <button class="domain-pill">
+          <span class="domain-dot"></span>
+          <span>littleowh.com</span>
+          <span class="domain-count">1</span>
+        </button>
+        <button class="domain-pill">
+          <span class="domain-dot"></span>
+          <span>aloprints.com</span>
+          <span class="domain-count">1</span>
+        </button>
+      </div>
+
+      <div class="user-card">
+        <div class="user-card-inner">
+          <div class="user-avatar">AD</div>
+          <div>
+            <div class="user-name">Admin</div>
+            <div class="user-email">admin@workspace</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main">
+      <!-- Top Bar -->
+      <div class="top-bar">
+        <div class="top-bar-inner">
+          <div class="breadcrumb">
+            <span>Workspace</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            <span class="breadcrumb-current">Mailboxes</span>
+          </div>
+          <div class="top-actions">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" class="search-input" placeholder="Search mailboxes...">
+            </div>
+            <button class="btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+              Filter
+            </button>
+            <button class="btn btn-primary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+              New Mailbox
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Header -->
+      <div class="header">
+        <div>
+          <h1 class="header-title">Mailboxes</h1>
+          <p class="header-subtitle">All inboxes across your 4 connected domains.</p>
+        </div>
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-label">Domains</div>
+            <div class="stat-value">4</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Mailboxes</div>
+            <div class="stat-value">5</div>
+          </div>
+          <div class="stat accent">
+            <div class="stat-label">Unread</div>
+            <div class="stat-value">16</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Groups -->
+      <div class="groups">
+        <!-- ezcustomcar.com -->
+        <div class="group">
+          <div class="group-header">
+            <div class="group-header-inner">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              <h2>ezcustomcar.com</h2>
+              <span class="count">· 1 mailbox</span>
+            </div>
+            <div class="divider"></div>
+          </div>
+          <div class="grid">
+            <div class="mailbox-card">
+              <div class="card-top">
+                <div class="card-avatar" style="background: linear-gradient(135deg, #10b981, #34d399);">E</div>
+                <div class="card-info">
+                  <div class="card-name-row">
+                    <div class="card-name">Ezcustomcar</div>
+                    <span class="status-badge idle"><span class="status-dot idle"></span>Idle</span>
+                  </div>
+                  <div class="card-email">support@ezcustomcar.com</div>
+                </div>
+                <button class="card-menu">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+                </button>
+              </div>
+              <div class="card-bottom">
+                <div class="unread-info">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                  <span>No emails yet</span>
+                </div>
+                <a href="#" class="open-btn">
+                  Open <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                </a>
+              </div>
+            </div>
+            <button class="add-card">
+              <div class="add-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+              </div>
+              Add mailbox to ezcustomcar.com
+            </button>
+          </div>
+        </div>
+
+        <!-- kozmozracing.com -->
+        <div class="group">
+          <div class="group-header">
+            <div class="group-header-inner">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              <h2>kozmozracing.com</h2>
+              <span class="count">· 2 mailboxes</span>
+            </div>
+            <div class="divider"></div>
+          </div>
+          <div class="grid">
+            <div class="mailbox-card">
+              <div class="card-top">
+                <div class="card-avatar" style="background: linear-gradient(135deg, #ec4899, #f472b6);">K</div>
+                <div class="card-info">
+                  <div class="card-name-row">
+                    <div class="card-name">Kozmozracing</div>
+                    <span class="status-badge active"><span class="status-dot active"></span>Active</span>
+                  </div>
+                  <div class="card-email">dmca@kozmozracing.com</div>
+                </div>
+                <button class="card-menu">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+                </button>
+              </div>
+              <div class="card-bottom">
+                <div class="unread-info">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                  <span><span class="unread-count">3</span> unread</span>
+                </div>
+                <a href="#" class="open-btn">
+                  Open <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                </a>
+              </div>
+            </div>
+            <div class="mailbox-card">
+              <div class="card-top">
+                <div class="card-avatar" style="background: linear-gradient(135deg, #84cc16, #a3e635);">K</div>
+                <div class="card-info">
+                  <div class="card-name-row">
+                    <div class="card-name">Kozmozracing</div>
+                    <span class="status-badge active"><span class="status-dot active"></span>Active</span>
+                  </div>
+                  <div class="card-email">support@kozmozracing.com</div>
+                </div>
+                <button class="card-menu">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+                </button>
+              </div>
+              <div class="card-bottom">
+                <div class="unread-info">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                  <span><span class="unread-count">12</span> unread</span>
+                </div>
+                <a href="#" class="open-btn">
+                  Open <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                </a>
+              </div>
+            </div>
+            <button class="add-card">
+              <div class="add-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+              </div>
+              Add mailbox to kozmozracing.com
+            </button>
+          </div>
+        </div>
+
+        <!-- littleowh.com -->
+        <div class="group">
+          <div class="group-header">
+            <div class="group-header-inner">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              <h2>littleowh.com</h2>
+              <span class="count">· 1 mailbox</span>
+            </div>
+            <div class="divider"></div>
+          </div>
+          <div class="grid">
+            <div class="mailbox-card">
+              <div class="card-top">
+                <div class="card-avatar" style="background: linear-gradient(135deg, #ec4899, #f472b6);">L</div>
+                <div class="card-info">
+                  <div class="card-name-row">
+                    <div class="card-name">LittleOwh</div>
+                    <span class="status-badge idle"><span class="status-dot idle"></span>Idle</span>
+                  </div>
+                  <div class="card-email">support@littleowh.com</div>
+                </div>
+                <button class="card-menu">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+                </button>
+              </div>
+              <div class="card-bottom">
+                <div class="unread-info">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                  <span>No emails yet</span>
+                </div>
+                <a href="#" class="open-btn">
+                  Open <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                </a>
+              </div>
+            </div>
+            <button class="add-card">
+              <div class="add-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+              </div>
+              Add mailbox to littleowh.com
+            </button>
+          </div>
+        </div>
+
+        <!-- aloprints.com -->
+        <div class="group">
+          <div class="group-header">
+            <div class="group-header-inner">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              <h2>aloprints.com</h2>
+              <span class="count">· 1 mailbox</span>
+            </div>
+            <div class="divider"></div>
+          </div>
+          <div class="grid">
+            <div class="mailbox-card">
+              <div class="card-top">
+                <div class="card-avatar" style="background: linear-gradient(135deg, #f59e0b, #fbbf24);">A</div>
+                <div class="card-info">
+                  <div class="card-name-row">
+                    <div class="card-name">Aloprints</div>
+                    <span class="status-badge active"><span class="status-dot active"></span>Active</span>
+                  </div>
+                  <div class="card-email">hello@aloprints.com</div>
+                </div>
+                <button class="card-menu">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+                </button>
+              </div>
+              <div class="card-bottom">
+                <div class="unread-info">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                  <span><span class="unread-count">1</span> unread</span>
+                </div>
+                <a href="#" class="open-btn">
+                  Open <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                </a>
+              </div>
+            </div>
+            <button class="add-card">
+              <div class="add-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+              </div>
+              Add mailbox to aloprints.com
+            </button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
