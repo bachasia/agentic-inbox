@@ -25,3 +25,24 @@ body {
   margin-top: 0.25em;
   margin-bottom: 0.25em;
 }
+
+/* Home page brand tokens */
+:root {
+  --home-indigo: #4f46e5;
+}
+
+.home-mailbox-card {
+  transition: box-shadow 200ms, border-color 200ms;
+}
+.home-mailbox-card:hover {
+  box-shadow: 0 8px 30px -12px rgba(79, 70, 229, 0.15);
+  border-color: rgba(79, 70, 229, 0.3);
+}
+
+.home-add-card {
+  transition: border-color 200ms, background 200ms, color 200ms;
+}
+.home-add-card:hover {
+  border-color: rgba(79, 70, 229, 0.5);
+  background: rgba(79, 70, 229, 0.03);
+}

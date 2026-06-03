@@ -110,6 +110,13 @@ const api = {
 	deleteMailbox: (mailboxId: string) =>
 		del<void>(`/api/v1/mailboxes/${mailboxId}`),
 
+	// All-mailboxes unified inbox
+	getAllEmails: (folder = "inbox", limit = 25, page = 1) =>
+		get<{ emails: Array<Email & { mailboxId: string }>; total: number }>(
+			"/api/v1/emails/all",
+			{ params: { folder, limit: String(limit), page: String(page) } },
+		),
+
 	// Emails
 	listEmails: (mailboxId: string, params: Record<string, string>, opts?: { signal?: AbortSignal }) =>
 		get<EmailListResponse | Email[]>(`/api/v1/mailboxes/${mailboxId}/emails`, { params, signal: opts?.signal }),

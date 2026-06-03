@@ -25,7 +25,7 @@ import { Folders } from "../shared/folders";
 import type { Env } from "./types";
 import { logger } from "./lib/logger";
 import { requireMailbox, type MailboxContext } from "./lib/mailbox";
-import { requireAdmin } from "./auth/middleware";
+import { requireAdmin, requireAuth } from "./auth/middleware";
 import { getUserMailboxIds } from "./auth/permissions";
 import { adminRoutes } from "./routes/admin-routes";
 
@@ -195,6 +195,43 @@ app.delete("/api/v1/mailboxes/:mailboxId", requireAdmin, async (c) => {
 	if (!(await c.env.BUCKET.head(key))) return c.json({ error: "Not found" }, 404);
 	await c.env.BUCKET.delete(key); // TODO: also delete DO data and R2 attachment blobs
 	return c.body(null, 204);
+});
+
+// -- All-mailboxes unified inbox ------------------------------------
+
+const ALLOWED_FOLDERS = new Set(Object.values(Folders));
+
+app.get("/api/v1/emails/all", requireAuth, async (c: AppContext) => {
+	const user = c.get("user");
+	const rawFolder = c.req.query("folder") ?? "inbox";
+	const folder = ALLOWED_FOLDERS.has(rawFolder as any) ? rawFolder : "inbox";
+	const rawLimit = parseInt(c.req.query("limit") ?? "25", 10);
+	const rawPage = parseInt(c.req.query("page") ?? "1", 10);
+	const limit = Math.min(Number.isNaN(rawLimit) ? 25 : rawLimit, 100);
+	const page = Number.isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
+
+	const allMailboxes = await listMailboxes(c.env.BUCKET);
+	let visible = allMailboxes;
+	if (user.role !== "admin") {
+		const allowedIds = new Set(await getUserMailboxIds(c.env, user.id));
+		visible = allMailboxes.filter((m) => allowedIds.has(m.id));
+	}
+
+	const perMailbox = await Promise.all(
+		visible.map(async (m) => {
+			const stub = c.env.MAILBOX.get(c.env.MAILBOX.idFromName(m.id));
+			const emails = await stub.getEmails({ folder, page: 1, limit: 100 } as any);
+			const list: any[] = Array.isArray(emails) ? emails : (emails as any).emails ?? [];
+			return list.map((e: any) => ({ ...e, mailboxId: m.id }));
+		}),
+	);
+
+	const merged = perMailbox
+		.flat()
+		.sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());
+
+	const offset = (page - 1) * limit;
+	return c.json({ emails: merged.slice(offset, offset + limit), total: merged.length });
 });
 
 // -- Emails ---------------------------------------------------------

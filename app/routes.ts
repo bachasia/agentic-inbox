@@ -26,5 +26,8 @@ export default [
 		route("settings", "routes/settings.tsx"),
 		route("search", "routes/search-results.tsx"),
 	]),
+	route("all-inboxes", "routes/all-inboxes.tsx"),
+	route("domains", "routes/domains.tsx"),
+	route("settings", "routes/global-settings.tsx"),
 	route("*", "routes/not-found.tsx"),
 ] satisfies RouteConfig;
