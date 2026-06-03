@@ -664,6 +664,29 @@ app.delete("/api/v1/mailboxes/:mailboxId/rules/:ruleId", async (c: AppContext) =
 	return ok ? c.body(null, 204) : c.json({ error: "Not found" }, 404);
 });
 
+// -- WooCommerce ----------------------------------------------------
+
+app.get("/api/v1/mailboxes/:mailboxId/woocommerce/orders", async (c: AppContext) => {
+	const email = c.req.query("email");
+	if (!email) return c.json({ error: "email query param required" }, 400);
+	const orders = await (c.var.mailboxStub as any).getWooOrders(email.toLowerCase());
+	return c.json({ orders });
+});
+
+app.post("/api/v1/mailboxes/:mailboxId/woocommerce/test", async (c: AppContext) => {
+	const body = await c.req.json() as { storeUrl?: string; consumerKey?: string; consumerSecret?: string };
+	if (!body.storeUrl || !body.consumerKey || !body.consumerSecret) {
+		return c.json({ success: false, error: "storeUrl, consumerKey, consumerSecret required" }, 400);
+	}
+	const { testWooCommerceConnection } = await import("./lib/woocommerce");
+	const result = await testWooCommerceConnection({
+		storeUrl: body.storeUrl,
+		consumerKey: body.consumerKey,
+		consumerSecret: body.consumerSecret,
+	});
+	return c.json(result);
+});
+
 // -- Attachments ----------------------------------------------------
 
 app.get("/api/v1/mailboxes/:mailboxId/emails/:emailId/attachments/:attachmentId", async (c: AppContext) => {

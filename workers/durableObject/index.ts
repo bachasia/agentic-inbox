@@ -1691,4 +1691,50 @@ export class MailboxDO extends DurableObject<Env> {
 			this.db.insert(schema.attachments).values(attachments).run();
 		}
 	}
+
+	// ── WooCommerce order cache ────────────────────────────────────────
+
+	async getWooOrders(email: string): Promise<unknown[]> {
+		const key = email.toLowerCase();
+		const FIFTEEN_MIN_MS = 900_000;
+
+		// Check cache
+		const rows = [...this.ctx.storage.sql.exec(
+			`SELECT data, fetched_at FROM woo_orders_cache WHERE email = ?`, key,
+		)] as Array<{ data: string; fetched_at: number }>;
+		const cached = rows[0];
+
+		if (cached && Date.now() - cached.fetched_at < FIFTEEN_MIN_MS) {
+			return JSON.parse(cached.data) as unknown[];
+		}
+
+		// Load WooCommerce settings from R2
+		const mailboxId = this.ctx.id.name;
+		const settingsObj = await this.env.BUCKET.get(`mailboxes/${mailboxId}.json`);
+		const settings = settingsObj ? await settingsObj.json() as Record<string, any> : {};
+		const woo = settings.woocommerce;
+
+		if (!woo?.enabled || !woo.storeUrl || !woo.consumerKey || !woo.consumerSecret) {
+			return [];
+		}
+
+		const { fetchCustomerOrders } = await import("../lib/woocommerce");
+		try {
+			const orders = await fetchCustomerOrders(
+				{ storeUrl: woo.storeUrl, consumerKey: woo.consumerKey, consumerSecret: woo.consumerSecret },
+				key,
+				20,
+			);
+			const data = JSON.stringify(orders);
+			this.ctx.storage.sql.exec(
+				`INSERT OR REPLACE INTO woo_orders_cache (email, data, fetched_at) VALUES (?, ?, ?)`,
+				key, data, Date.now(),
+			);
+			return orders;
+		} catch (err) {
+			// Serve stale cache as fallback if available
+			if (cached) return JSON.parse(cached.data) as unknown[];
+			throw err;
+		}
+	}
 }

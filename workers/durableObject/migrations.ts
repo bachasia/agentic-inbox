@@ -281,4 +281,14 @@ export const mailboxMigrations: Migration[] = [
             CREATE INDEX idx_rules_priority ON automation_rules(priority);
         `),
 	},
+	{
+		name: "19_add_woocommerce_cache",
+		sql: txn(`
+            CREATE TABLE woo_orders_cache (
+                email      TEXT NOT NULL PRIMARY KEY,
+                data       TEXT NOT NULL,
+                fetched_at INTEGER NOT NULL
+            );
+        `),
+	},
 ];
