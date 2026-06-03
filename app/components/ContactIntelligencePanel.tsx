@@ -7,6 +7,7 @@ import type { ContactIntelligence } from "~/types";
 interface ContactIntelligencePanelProps {
 	intelligence: ContactIntelligence;
 	contactEmail: string;
+	mailboxId?: string;
 }
 
 function RelationshipGauge({ score }: { score: number }) {
@@ -39,7 +40,7 @@ function formatResponseTime(hours: number | null): string {
 	return `${Math.round(hours / 24)}d`;
 }
 
-export default function ContactIntelligencePanel({ intelligence, contactEmail }: ContactIntelligencePanelProps) {
+export default function ContactIntelligencePanel({ intelligence, contactEmail, mailboxId: _mailboxId }: ContactIntelligencePanelProps) {
 	const lastContactDate = intelligence.lastContact
 		? new Date(intelligence.lastContact).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
 		: null;

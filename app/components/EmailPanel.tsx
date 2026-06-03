@@ -18,6 +18,9 @@ import { useFolders } from "~/queries/folders";
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
 import { useActionItems, useCompleteActionItem } from "~/queries/action-items-query";
+import { useContactIntelligence } from "~/queries/contact-intelligence-query";
+import ContactIntelligencePanel from "~/components/ContactIntelligencePanel";
+import WooCommerceOrdersPanel from "~/components/woocommerce-orders-panel";
 import type { Email, Folder, Mailbox } from "~/types";
 
 function EmailPanelSkeleton() {
@@ -89,6 +92,8 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	// Hooks must be called unconditionally before any early return
 	const { data: actionItems = [] } = useActionItems(mailboxId, false);
 	const completeActionItem = useCompleteActionItem(mailboxId ?? "");
+	const senderEmail = email?.sender;
+	const { data: contactIntelligence } = useContactIntelligence(mailboxId, senderEmail);
 
 	if (!email) return <EmailPanelSkeleton />;
 
@@ -199,6 +204,19 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 							)}
 						</button>
 					))}
+				</div>
+			)}
+
+			{(contactIntelligence || senderEmail) && (
+				<div className="px-5 py-3 border-b border-kumo-line space-y-3">
+					{contactIntelligence && (
+						<ContactIntelligencePanel
+							intelligence={contactIntelligence}
+							contactEmail={senderEmail ?? ""}
+							mailboxId={mailboxId}
+						/>
+					)}
+					<WooCommerceOrdersPanel mailboxId={mailboxId} contactEmail={senderEmail} />
 				</div>
 			)}
 
