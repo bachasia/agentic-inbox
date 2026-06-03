@@ -19,6 +19,7 @@ import {
 	toolSendEmail,
 	toolMarkEmailRead,
 	toolMoveEmail,
+	toolGetCustomerOrders,
 } from "../lib/tools";
 import { Folders, FOLDER_TOOL_DESCRIPTION, MOVE_FOLDER_TOOL_DESCRIPTION } from "../../shared/folders";
 import type { Env } from "../types";
@@ -426,6 +427,22 @@ export class EmailMCP extends McpAgent<Env> {
 						isError: true,
 					};
 				}
+				return mcpText(result);
+			},
+		);
+
+		// ── lookup_customer_orders ─────────────────────────────────
+		this.server.tool(
+			"lookup_customer_orders",
+			"Look up WooCommerce orders for a customer by email address. Returns order history with status, items, total, payment method, and tracking info.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				contactEmail: z.string().describe("Customer email address to look up orders for"),
+			},
+			async ({ mailboxId, contactEmail }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				const result = await toolGetCustomerOrders(env, mailboxId, { contactEmail });
 				return mcpText(result);
 			},
 		);

@@ -630,3 +630,22 @@ export async function toolSendEmail(
 
 	return { status: "sent", messageId, message: `Email sent to ${params.to}` };
 }
+
+// ── lookup_customer_orders ─────────────────────────────────────────
+
+type WooCommerceStub = {
+	getWooOrders: (email: string) => Promise<unknown[]>;
+};
+
+export async function toolGetCustomerOrders(
+	env: Env,
+	mailboxId: string,
+	params: { contactEmail: string },
+) {
+	const stub = getMailboxStub(env, mailboxId);
+	const orders = await (stub as unknown as WooCommerceStub).getWooOrders(params.contactEmail);
+	if (!orders || orders.length === 0) {
+		return { message: `No WooCommerce orders found for ${params.contactEmail}` };
+	}
+	return { orders, count: orders.length };
+}

@@ -33,6 +33,7 @@ import {
 	toolSemanticSearch,
 	toolAskAboutEmails,
 	toolGetContactIntelligence,
+	toolGetCustomerOrders,
 } from "../lib/tools";
 import { Folders, FOLDER_TOOL_DESCRIPTION, MOVE_FOLDER_TOOL_DESCRIPTION } from "../../shared/folders";
 import type { Env } from "../types";
@@ -99,7 +100,10 @@ You have three search modes:
 - **ask_about_emails**: Full Q&A over email history. Use for questions like "What did Bob say about the deadline?" or "When did we last discuss pricing?" Returns a synthesized answer with citations.
 
 ## Contact Intelligence
-Use **get_contact_intelligence** to look up communication stats for a contact (email count, avg response time, relationship score, top topics). Use when asked "How often do I talk to X?" or "Tell me about my relationship with X".`;
+Use **get_contact_intelligence** to look up communication stats for a contact (email count, avg response time, relationship score, top topics). Use when asked "How often do I talk to X?" or "Tell me about my relationship with X".
+
+## Customer Orders
+Use **lookup_customer_orders** to look up WooCommerce orders for a contact. Use when asked "What did this customer order?", "What's their order status?", or "Show me their purchase history". Returns order numbers, statuses, line items, and tracking info.`;
 
 /**
  * Fetch the custom system prompt for a mailbox from its R2 settings.
@@ -337,6 +341,16 @@ function createEmailTools(env: Env, mailboxId: string) {
 			}),
 			execute: async ({ contactEmail }): Promise<unknown> => {
 				return toolGetContactIntelligence(env, mailboxId, { contactEmail });
+			},
+		}),
+
+		lookup_customer_orders: defineTool({
+			description: "Look up WooCommerce orders for a customer by email address. Returns order history with status, items, total, payment method, and tracking info. Use when asked about a customer's purchases or order status.",
+			parameters: z.object({
+				contactEmail: z.string().email().describe("Customer email address to look up orders for"),
+			}),
+			execute: async ({ contactEmail }): Promise<unknown> => {
+				return toolGetCustomerOrders(env, mailboxId, { contactEmail });
 			},
 		}),
 	};
