@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import type { Email, Folder, Mailbox, Label, Contact, EmailTemplate, ActionItem, ContactIntelligence, AutomationRule, RuleCondition, RuleAction } from "~/types";
+import type { Email, Folder, Mailbox, Label, Contact, EmailTemplate, ActionItem, ContactIntelligence, AutomationRule, RuleCondition, RuleAction, WooCommerceOrder } from "~/types";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -267,6 +267,12 @@ const api = {
 		del<void>(`/api/v1/mailboxes/${mailboxId}/rules/${ruleId}`),
 	reorderRules: (mailboxId: string, ids: string[]) =>
 		put<{ reordered: boolean }>(`/api/v1/mailboxes/${mailboxId}/rules/reorder`, { ids }),
+
+	// WooCommerce
+	testWooCommerce: (mailboxId: string, settings: { storeUrl: string; consumerKey: string; consumerSecret: string }) =>
+		post<{ success: boolean; error?: string }>(`/api/v1/mailboxes/${mailboxId}/woocommerce/test`, settings),
+	getWooOrders: (mailboxId: string, email: string) =>
+		get<{ orders: WooCommerceOrder[] }>(`/api/v1/mailboxes/${mailboxId}/woocommerce/orders`, { params: { email } }),
 };
 
 export default api;

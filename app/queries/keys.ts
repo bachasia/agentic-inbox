@@ -45,4 +45,8 @@ export const queryKeys = {
 	rules: {
 		list: (mailboxId: string) => ["mailboxes", mailboxId, "rules"] as const,
 	},
+	woocommerceOrders: {
+		list: (mailboxId: string, email: string) =>
+			["mailboxes", mailboxId, "woocommerce-orders", email] as const,
+	},
 };
