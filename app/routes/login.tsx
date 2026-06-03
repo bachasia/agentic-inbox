@@ -1,5 +1,5 @@
 import { Button, Input, Text } from "@cloudflare/kumo";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { useNavigate, Link as RouterLink } from "react-router";
 import { authClient } from "~/lib/auth-client";
 
@@ -9,6 +9,11 @@ export function meta() {
 
 export default function LoginRoute() {
 	const navigate = useNavigate();
+	const { data: session, isPending } = authClient.useSession();
+
+	useEffect(() => {
+		if (!isPending && session) navigate("/", { replace: true });
+	}, [session, isPending, navigate]);
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [error, setError] = useState<string | null>(null);
