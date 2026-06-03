@@ -1,5 +1,9 @@
 # Multi-Domain Deployment Guide
 
+Two patterns for multi-domain support. Choose based on your needs.
+
+## Pattern A: Multi-Worker (Isolated)
+
 Deploy one codebase to multiple Cloudflare Workers — one Worker per domain.
 Updates push to all domains automatically via GitHub Actions on every merge to `main`.
 
@@ -144,3 +148,64 @@ for env in bach-asia example-com; do
   wrangler deploy --env "$env"
 done
 ```
+
+---
+
+## Pattern B: Single Worker, Multiple Domains
+
+One Worker handles all domains. Simpler setup, shared resources, single UI.
+
+### How It Works
+
+```
+Domain A (Email Routing catch-all) ──┐
+Domain B (Email Routing catch-all) ──┼──▶ Worker "agentic-inbox-bach-asia"
+Domain C (Email Routing catch-all) ──┘        │
+                                              ├── R2 bucket (shared)
+                                              ├── Vectorize index (shared)
+                                              └── Durable Objects (per-mailbox, isolated)
+```
+
+Each mailbox is isolated via Durable Objects (keyed by full email address), so `hello@domainA.com` and `hello@domainB.com` are completely separate.
+
+### Adding a Domain to Existing Worker
+
+**Step 1** — Update `DOMAINS` in `wrangler.jsonc`:
+
+```jsonc
+"vars": {
+  "DOMAINS": "bach.asia,newdomain.com",  // comma-separated
+  "EMAIL_ADDRESSES": []
+}
+```
+
+**Step 2** — Add domain to Cloudflare account (if not already there).
+
+**Step 3** — Configure Email Routing for new domain:
+- Cloudflare dashboard → new domain → Email Routing → Enable
+- Create catch-all rule → forward to **existing** Worker (`agentic-inbox-bach-asia`)
+
+**Step 4** — Configure DNS for outbound email:
+- Add SPF record: `v=spf1 include:_spf.mx.cloudflare.net ~all`
+- Add DKIM record (from Email Routing settings)
+- Add DMARC record: `v=DMARC1; p=none;`
+
+**Step 5** — Deploy and create mailboxes:
+
+```bash
+wrangler deploy --env bach-asia
+```
+
+Visit the UI → create mailboxes for addresses on the new domain.
+
+### When to Use Pattern B
+
+- Personal use with multiple domains
+- Same owner/team manages all domains
+- Want single dashboard for all mailboxes
+
+### When to Use Pattern A Instead
+
+- Different teams per domain need separate access control
+- Need isolated storage and billing per domain
+- Compliance requires data separation
