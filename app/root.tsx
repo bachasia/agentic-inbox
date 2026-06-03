@@ -23,6 +23,7 @@ import {
 	ScrollRestoration,
 } from "react-router";
 import { ApiError } from "~/services/api";
+import { useThemeSync } from "~/hooks/use-theme-store";
 import "./index.css";
 
 function makeQueryClient() {
@@ -77,7 +78,7 @@ const KumoLink = forwardRef<
 
 export function Layout({ children }: { children: React.ReactNode }) {
 	return (
-		<html lang="en">
+		<html lang="en" suppressHydrationWarning>
 			<head>
 				<meta charSet="UTF-8" />
 				<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -88,7 +89,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
 					sizes="48x48 32x32 16x16"
 				/>
 				<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+				<link rel="manifest" href="/manifest.json" />
+				<meta name="theme-color" content="#2563eb" />
+				<meta name="apple-mobile-web-app-capable" content="yes" />
+				<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 				<title>Agentic Inbox</title>
+				<script dangerouslySetInnerHTML={{ __html: `(function(){var p=localStorage.getItem("theme-preference")||"system";var m=p;if(p==="system"){m=window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light"}document.documentElement.setAttribute("data-mode",m)})()` }} />
 				<Meta />
 				<Links />
 			</head>
@@ -96,6 +102,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 				{children}
 				<ScrollRestoration />
 				<Scripts />
+				<script dangerouslySetInnerHTML={{ __html: 'if("serviceWorker"in navigator){navigator.serviceWorker.register("/service-worker.js").catch(function(){})}' }} />
 			</body>
 		</html>
 	);
@@ -113,6 +120,7 @@ export default function App() {
 	// Use useState to ensure each SSR request gets a fresh client while the
 	// browser reuses the same singleton across navigations.
 	const [queryClient] = useState(getQueryClient);
+	useThemeSync();
 	return (
 		<QueryClientProvider client={queryClient}>
 			<LinkProvider component={KumoLink}>

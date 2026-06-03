@@ -10,6 +10,7 @@
  */
 
 import { escapeHtml, stripHtmlToText, textToHtml } from "./email-helpers";
+import { logger } from "./logger";
 
 // ── Prompt Injection Scanner ───────────────────────────────────────
 
@@ -44,13 +45,13 @@ export async function isPromptInjection(ai: Ai, bodyHtml: string | null | undefi
 		const result = (response?.response || "NO").trim().toUpperCase();
 		
 		if (result.includes("YES")) {
-			console.warn("Prompt injection detected in incoming email, blocking auto-draft");
+			logger.warn("agent", "Prompt injection detected in incoming email, blocking auto-draft");
 			return true;
 		}
 		
 		return false;
 	} catch (e) {
-		console.error("Prompt injection scanner failed, skipping auto-draft:", (e as Error).message);
+		logger.error("agent", "Prompt injection scanner failed, skipping auto-draft", { error: e });
 		// Fail closed: treat scanner failures as potential injection to avoid
 		// auto-drafting replies to emails we couldn't verify.
 		// The email is still stored in the inbox — only auto-draft is skipped.
@@ -166,10 +167,9 @@ export async function verifyDraft(ai: Ai, body: string): Promise<string> {
 		// This threshold balances between catching real artifacts and
 		// preventing the verifier from gutting legitimate emails.
 		if (cleanedTrimmed.length < replyText.trim().length * 0.5) {
-			console.warn(
-				"Draft verifier removed >50% of content, falling back to original.",
-				`Original: ${replyText.trim().length} chars, Cleaned: ${cleanedTrimmed.length} chars`,
-			);
+			logger.warn("agent", "Draft verifier removed >50% of content, falling back to original", {
+				meta: { originalLen: replyText.trim().length, cleanedLen: cleanedTrimmed.length },
+			});
 			return body;
 		}
 
@@ -183,7 +183,7 @@ export async function verifyDraft(ai: Ai, body: string): Promise<string> {
 			? `${cleanedTrimmed}\n\n${quotedBlock}`
 			: cleanedTrimmed;
 	} catch (e) {
-		console.error("verifyDraft AI failed, returning original body:", (e as Error).message);
+		logger.error("agent", "verifyDraft AI failed, returning original body", { error: e });
 		return body;
 	}
 }
@@ -259,7 +259,7 @@ export async function extractActionItems(
 				dueDate: normalizeDueDate(item.dueDate),
 			}));
 	} catch (e) {
-		console.error("extractActionItems failed:", (e as Error).message);
+		logger.error("triage", "Action item extraction failed", { error: e });
 		return [];
 	}
 }
@@ -280,7 +280,6 @@ export async function synthesizeDigest(ai: Ai, data: Record<string, any>): Promi
 
 	try {
 		const response = (await ai.run(
-			// @ts-expect-error — model not in generated union
 			"@cf/moonshotai/kimi-k2.5",
 			{
 				messages: [
@@ -294,7 +293,7 @@ export async function synthesizeDigest(ai: Ai, data: Record<string, any>): Promi
 
 		return response?.response?.trim() ?? "";
 	} catch (e) {
-		console.error("synthesizeDigest failed:", (e as Error).message);
+		logger.error("agent", "Digest synthesis failed", { error: e });
 		return "";
 	}
 }
@@ -359,7 +358,7 @@ export async function triageEmail(
 
 		return { category, priority, confidence, reason } as TriageResult;
 	} catch (e) {
-		console.error("triageEmail failed:", (e as Error).message);
+		logger.error("triage", "Email triage failed", { error: e });
 		return null;
 	}
 }
@@ -379,7 +378,6 @@ export async function synthesizeAnswer(
 
 	try {
 		const result = (await ai.run(
-			// @ts-expect-error — model not in generated union
 			"@cf/moonshotai/kimi-k2.5",
 			{
 				messages: [
@@ -392,7 +390,7 @@ export async function synthesizeAnswer(
 		)) as { response?: string };
 		return result?.response?.trim() ?? "I couldn't find relevant information in your emails.";
 	} catch (e) {
-		console.error("synthesizeAnswer failed:", (e as Error).message);
+		logger.error("agent", "Answer synthesis failed", { error: e });
 		return "I couldn't find relevant information in your emails.";
 	}
 }
@@ -426,7 +424,7 @@ export async function extractContactTopics(ai: Ai, subjects: string[]): Promise<
 		if (!Array.isArray(parsed)) return [];
 		return parsed.filter((t: unknown) => typeof t === "string").slice(0, 3);
 	} catch (e) {
-		console.error("extractContactTopics failed:", (e as Error).message);
+		logger.error("triage", "Contact topic extraction failed", { error: e });
 		return [];
 	}
 }
@@ -463,7 +461,7 @@ export async function summarizeThread(
 		if (!summary) return null;
 		return summary.slice(0, 120);
 	} catch (e) {
-		console.error("summarizeThread failed:", (e as Error).message);
+		logger.error("triage", "Thread summarization failed", { error: e });
 		return null;
 	}
 }

@@ -10,6 +10,8 @@
  * index serves all mailboxes. All queries filter by mailboxId metadata.
  */
 
+import { logger } from "./logger";
+
 const BGE_MODEL = "@cf/baai/bge-base-en-v1.5" as const;
 // BGE-base handles ~512 tokens; 2000 chars ≈ 400 tokens, safely within limit
 const MAX_EMBED_CHARS = 2000;
@@ -24,7 +26,7 @@ export async function embedText(ai: Ai, text: string): Promise<number[] | null> 
 		const result = await (ai as any).run(BGE_MODEL, { text: [truncated] }) as { data: number[][] };
 		return result.data[0] ?? null;
 	} catch (e) {
-		console.error("embedText failed:", (e as Error).message);
+		logger.error("vectorize", "embedText failed", { error: e });
 		return null;
 	}
 }
@@ -74,7 +76,7 @@ export async function searchSimilarEmails(
 			score: m.score,
 		}));
 	} catch (e) {
-		console.error("searchSimilarEmails failed:", (e as Error).message);
+		logger.error("vectorize", "searchSimilarEmails failed", { error: e });
 		return [];
 	}
 }
@@ -91,6 +93,6 @@ export async function deleteEmailEmbedding(
 	try {
 		await vectorize.deleteByIds([`${mailboxId}:${emailId}`]);
 	} catch (e) {
-		console.error("deleteEmailEmbedding failed:", (e as Error).message);
+		logger.error("vectorize", "deleteEmailEmbedding failed", { error: e });
 	}
 }

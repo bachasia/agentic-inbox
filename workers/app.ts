@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { jwtVerify, createRemoteJWKSet } from "jose";
 import { createRequestHandler } from "react-router";
 import { app as apiApp, receiveEmail } from "./index";
+import { logger } from "./lib/logger";
 import { EmailMCP } from "./mcp";
 import type { Env } from "./types";
 
@@ -118,7 +119,7 @@ export default {
 		try {
 			await receiveEmail(event, env, ctx);
 		} catch (e) {
-			console.error("Failed to process incoming email:", (e as Error).message, (e as Error).stack);
+			logger.error("email-receive", "Failed to process incoming email", { error: e });
 			// Re-throw so Cloudflare's email routing can retry delivery or bounce the message.
 			// Swallowing the error would silently drop the email.
 			throw e;

@@ -2,6 +2,8 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
+import { logger } from "./logger";
+
 export interface EmailNotificationMeta {
 	sender: string;
 	senderName?: string;
@@ -83,7 +85,7 @@ export async function notifyNewEmail(
 	if (tg?.enabled && tg.botToken && tg.chatId) {
 		tasks.push(
 			sendTelegramNotification({ botToken: tg.botToken, chatId: tg.chatId }, meta)
-				.catch((e: Error) => console.error("Telegram notification failed:", e.message)),
+				.catch((e: Error) => logger.error("notifications", "Telegram notification failed", { error: e })),
 		);
 	}
 
@@ -92,7 +94,7 @@ export async function notifyNewEmail(
 		tasks.push(
 			sendDiscordNotification({ webhookUrl: dc.webhookUrl }, meta)
 				.catch((e: Error) => {
-					console.error("Discord notification failed:", e.message);
+					logger.error("notifications", "Discord notification failed", { error: e });
 				}),
 		);
 	}
@@ -126,7 +128,7 @@ export async function sendReminderNotification(
 				body: JSON.stringify({ chat_id: tg.chatId, text }),
 			}).then(async (r) => {
 				if (!r.ok) throw new Error(`Telegram ${r.status}`);
-			}).catch((e: Error) => console.error("Reminder Telegram failed:", e.message)),
+			}).catch((e: Error) => logger.error("notifications", "Reminder Telegram failed", { error: e })),
 		);
 	}
 	const dc = notifications.discord;
@@ -138,7 +140,7 @@ export async function sendReminderNotification(
 				body: JSON.stringify({ content: text }),
 			}).then(async (r) => {
 				if (!r.ok) throw new Error(`Discord ${r.status}`);
-			}).catch((e: Error) => console.error("Reminder Discord failed:", e.message)),
+			}).catch((e: Error) => logger.error("notifications", "Reminder Discord failed", { error: e })),
 		);
 	}
 	await Promise.allSettled(tasks);
@@ -201,7 +203,7 @@ export async function sendDigestNotification(
 				body: JSON.stringify({ chat_id: tg.chatId, text }),
 			}).then(async (r) => {
 				if (!r.ok) throw new Error(`Telegram ${r.status}`);
-			}).catch((e: Error) => console.error("Digest Telegram failed:", e.message)),
+			}).catch((e: Error) => logger.error("notifications", "Digest Telegram failed", { error: e })),
 		);
 	}
 	const dc = notifications.discord;
@@ -213,7 +215,7 @@ export async function sendDigestNotification(
 				body: JSON.stringify({ content: text }),
 			}).then(async (r) => {
 				if (!r.ok) throw new Error(`Discord ${r.status}`);
-			}).catch((e: Error) => console.error("Digest Discord failed:", e.message)),
+			}).catch((e: Error) => logger.error("notifications", "Digest Discord failed", { error: e })),
 		);
 	}
 	if (!tasks.length) {

@@ -111,7 +111,7 @@ export function isValidWebhookUrl(url: string): boolean {
 		if (parsed.protocol !== "https:") return false;
 		const host = parsed.hostname;
 		// Block loopback, link-local, private ranges
-		if (host === "localhost" || host === "127.0.0.1" || host === "::1") return false;
+		if (host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]") return false;
 		if (/^10\./.test(host)) return false;
 		if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return false;
 		if (/^192\.168\./.test(host)) return false;

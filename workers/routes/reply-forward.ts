@@ -14,6 +14,7 @@ import {
 	buildThreadingHeaders,
 	resolveOriginalEmail,
 } from "../lib/email-helpers";
+import { logger } from "../lib/logger";
 import { SendEmailRequestSchema } from "../lib/schemas";
 import { Folders } from "../../shared/folders";
 import type { MailboxContext } from "../lib/mailbox";
@@ -105,7 +106,7 @@ export async function handleReplyEmail(c: AppContext) {
 			})),
 			headers: buildThreadingHeaders(originalMsgId, references),
 		}).catch((e) => {
-			console.error("Deferred reply delivery failed:", (e as Error).message);
+			logger.error("email-send", "Deferred reply delivery failed", { error: e });
 		}),
 	);
 
@@ -190,7 +191,7 @@ export async function handleForwardEmail(c: AppContext) {
 				contentId: att.contentId,
 			})),
 		}).catch((e) => {
-			console.error("Deferred forward delivery failed:", (e as Error).message);
+			logger.error("email-send", "Deferred forward delivery failed", { error: e });
 		}),
 	);
 

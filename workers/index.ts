@@ -23,6 +23,7 @@ import { embedText, upsertEmailEmbedding, searchSimilarEmails, deleteEmailEmbedd
 import { handleReplyEmail, handleForwardEmail } from "./routes/reply-forward";
 import { Folders } from "../shared/folders";
 import type { Env } from "./types";
+import { logger } from "./lib/logger";
 import { requireMailbox, type MailboxContext } from "./lib/mailbox";
 
 type AppContext = Context<MailboxContext>;
@@ -148,7 +149,7 @@ app.put("/api/v1/mailboxes/:mailboxId", async (c) => {
 			await (stub as any).cancelDigestAlarm();
 		}
 	} catch (e) {
-		console.error("Digest alarm update failed:", (e as Error).message);
+		logger.error("api", "Digest alarm update failed", { error: e });
 	}
 
 	return c.json({ id: mailboxId, name: mailboxId, email: mailboxId, settings });
@@ -229,13 +230,13 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 			to, cc, bcc, from, subject, html, text,
 			attachments: attachments?.map((att) => ({ content: att.content, filename: att.filename, type: att.type, disposition: att.disposition || "attachment", contentId: att.contentId })),
 			...(in_reply_to ? { headers: buildThreadingHeaders(in_reply_to, references || []) } : {}),
-		}).catch((e) => console.error("Deferred email delivery failed:", (e as Error).message)),
+		}).catch((e) => logger.error("email-send", "Deferred email delivery failed", { error: e })),
 	);
 
 	// Schedule unanswered-reply reminder alarm
 	c.executionCtx.waitUntil(
 		(stub as any).scheduleFollowUpReminder(messageId, mailboxId)
-			.catch((e: Error) => console.error("Follow-up reminder schedule failed:", e.message)),
+			.catch((e: Error) => logger.error("api", "Follow-up reminder schedule failed", { error: e })),
 	);
 
 	// Extract outbound recipients as contacts
@@ -293,7 +294,7 @@ app.delete("/api/v1/mailboxes/:mailboxId/emails/:id", async (c: AppContext) => {
 	if ((c.env as any).VECTORIZE) {
 		c.executionCtx.waitUntil(
 			deleteEmailEmbedding((c.env as any).VECTORIZE, mailboxId, id)
-				.catch((e: Error) => console.error("Embedding delete failed:", e.message)),
+				.catch((e: Error) => logger.error("vectorize", "Embedding delete failed", { error: e })),
 		);
 	}
 	return c.body(null, 204);
@@ -754,6 +755,22 @@ app.get("/api/v1/mailboxes/:mailboxId/signature-image/:filename", async (c) => {
 	});
 });
 
+// -- Export --------------------------------------------------------
+
+app.get("/api/v1/mailboxes/:mailboxId/export", async (c: AppContext) => {
+	const { exportMailboxToZip } = await import("./lib/email-export");
+	const mailboxId = c.req.param("mailboxId")!;
+	const folder = c.req.query("folder");
+	const zipData = await exportMailboxToZip(c.var.mailboxStub, c.env.BUCKET, { folder });
+	const date = new Date().toISOString().slice(0, 10);
+	return new Response(zipData.buffer as ArrayBuffer, {
+		headers: {
+			"Content-Type": "application/zip",
+			"Content-Disposition": `attachment; filename="mailbox-export-${mailboxId}-${date}.zip"`,
+		},
+	});
+});
+
 // -- Receive inbound email ------------------------------------------
 
 const MAX_EMAIL_SIZE = 25 * 1024 * 1024;
@@ -839,7 +856,7 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 	if (senderAddr && !NOREPLY_PATTERNS.test(senderAddr)) {
 		ctx.waitUntil(
 			(stub as any).upsertContact(senderAddr, parsedEmail.from?.name || undefined)
-				.catch((e: Error) => console.error("Contact upsert failed:", e.message)),
+				.catch((e: Error) => logger.error("contacts", "Contact upsert failed", { error: e })),
 		);
 	}
 
@@ -876,7 +893,7 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 				}
 			}
 		} catch (e) {
-			console.error("Triage failed:", (e as Error).message);
+			logger.error("triage", "Triage failed", { error: e });
 		}
 	})());
 
@@ -886,7 +903,7 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 			senderName: parsedEmail.from?.name || undefined,
 			subject: parsedEmail.subject || "(no subject)",
 			mailboxId,
-		}).catch((e: Error) => console.error("Notification failed:", e.message)),
+		}).catch((e: Error) => logger.error("notifications", "Notification failed", { error: e })),
 	);
 
 	// Extract action items (fail-open: skip newsletters/notifications/spam)
@@ -904,7 +921,7 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 				await (stub as any).createActionItem({ emailId: messageId, description: item.description, dueDate: item.dueDate });
 			}
 		} catch (e) {
-			console.error("Action item extraction failed:", (e as Error).message);
+			logger.error("triage", "Action item extraction failed", { error: e });
 		}
 	})());
 
@@ -923,7 +940,7 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 					await (stub as any).markEmbedded(messageId);
 				}
 			} catch (e) {
-				console.error("Embedding failed:", (e as Error).message);
+				logger.error("vectorize", "Embedding failed", { error: e });
 			}
 		})());
 	}
@@ -938,11 +955,11 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 						method: "POST",
 						headers: { "Content-Type": "application/json" },
 						body: JSON.stringify(wh.payload),
-					}).catch((e: Error) => console.error("Rule webhook failed:", e.message)),
+					}).catch((e: Error) => logger.error("rules", "Rule webhook failed", { error: e })),
 				);
 			}
 		} catch (e) {
-			console.error("Rule evaluation failed:", (e as Error).message);
+			logger.error("rules", "Rule evaluation failed", { error: e });
 		}
 	})());
 
@@ -950,7 +967,7 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 	ctx.waitUntil(agentStub.fetch(new Request("https://agents/onNewEmail", {
 		method: "POST", headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ mailboxId, emailId: messageId, sender: (parsedEmail.from?.address || "").toLowerCase(), subject: parsedEmail.subject || "", threadId }),
-	})).catch((e) => console.error("Auto-draft trigger failed:", (e as Error).message)));
+	})).catch((e) => logger.error("agent", "Auto-draft trigger failed", { error: e })));
 }
 
 export { app, receiveEmail };
