@@ -51,6 +51,15 @@ https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
 - **Auto-draft on new email** — Agent automatically reads inbound emails and generates draft replies, always requiring explicit confirmation before sending
 - **Configurable and persistent** — Custom system prompts per mailbox, persistent chat history, streaming markdown responses, and tool call visibility
 
+### Added in this fork
+
+- **Dark mode** — Toggle dark/light mode via UI; persisted across sessions
+- **Email export** — Export mailbox or folder as `.eml` files packaged in a `.zip`, including attachments
+- **PWA support** — Install as a desktop/mobile app via Web App Manifest and Service Worker
+- **Notifications** — New email alerts via Telegram bot or Discord webhook; configured per-mailbox through the UI
+- **Structured error logging** — Centralized logger across the worker layer replacing scattered `console.log` calls
+- **Unit tests & CI/CD** — Vitest test suite for core logic (rules engine, search parser, email helpers); GitHub Actions pipeline runs lint and tests on every push/PR
+
 ## Stack
 
 - **Frontend:** React 19, React Router v7, Tailwind CSS, Zustand, TipTap, `@cloudflare/kumo`
