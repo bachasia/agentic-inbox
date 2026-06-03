@@ -12,7 +12,7 @@ import {
 } from "@cloudflare/kumo";
 import { WarningIcon } from "@phosphor-icons/react";
 import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { forwardRef, useState } from "react";
+import { forwardRef, useEffect, useState } from "react";
 import {
 	isRouteErrorResponse,
 	Links,
@@ -21,9 +21,12 @@ import {
 	Link as RouterLink,
 	Scripts,
 	ScrollRestoration,
+	useLocation,
+	useNavigate,
 } from "react-router";
 import { ApiError } from "~/services/api";
 import { useThemeSync } from "~/hooks/use-theme-store";
+import { authClient } from "~/lib/auth-client";
 import "./index.css";
 
 function makeQueryClient() {
@@ -116,6 +119,32 @@ export function HydrateFallback() {
 	);
 }
 
+const PUBLIC_ROUTES = new Set(["/login", "/setup"]);
+
+function AuthGate({ children }: { children: React.ReactNode }) {
+	const { data: session, isPending } = authClient.useSession();
+	const location = useLocation();
+	const navigate = useNavigate();
+
+	useEffect(() => {
+		if (isPending) return;
+		const isPublic = PUBLIC_ROUTES.has(location.pathname);
+		if (!session && !isPublic) {
+			navigate("/login", { replace: true });
+		}
+	}, [session, isPending, location.pathname, navigate]);
+
+	if (isPending) {
+		return (
+			<div className="flex items-center justify-center h-screen">
+				<Loader size="lg" />
+			</div>
+		);
+	}
+
+	return <>{children}</>;
+}
+
 export default function App() {
 	// Use useState to ensure each SSR request gets a fresh client while the
 	// browser reuses the same singleton across navigations.
@@ -126,7 +155,9 @@ export default function App() {
 			<LinkProvider component={KumoLink}>
 				<TooltipProvider>
 					<Toasty>
-						<Outlet />
+						<AuthGate>
+							<Outlet />
+						</AuthGate>
 					</Toasty>
 				</TooltipProvider>
 			</LinkProvider>

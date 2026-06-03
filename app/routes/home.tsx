@@ -15,6 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router";
 import api from "~/services/api";
+import { authClient } from "~/lib/auth-client";
 import {
 	useCreateMailbox,
 	useDeleteMailbox,
@@ -39,13 +40,119 @@ function parseSenderName(sender: string): string {
 
 function MailboxCardSkeleton() {
 	return (
-		<div className="flex items-center gap-4 px-5 py-4 animate-pulse">
-			<div className="h-10 w-10 rounded-full bg-kumo-fill shrink-0" />
-			<div className="flex-1 space-y-2">
-				<div className="h-4 w-32 rounded bg-kumo-fill" />
-				<div className="h-3 w-48 rounded bg-kumo-fill" />
+		<div className="rounded-xl border border-kumo-line bg-kumo-base p-5 animate-pulse">
+			<div className="flex items-start justify-between mb-4">
+				<div className="h-12 w-12 rounded-full bg-kumo-fill shrink-0" />
+			</div>
+			<div className="space-y-2 mb-3">
+				<div className="h-4 w-28 rounded bg-kumo-fill" />
+				<div className="h-3 w-40 rounded bg-kumo-fill" />
+			</div>
+			<div className="pt-3 border-t border-kumo-line space-y-1.5">
+				<div className="h-3 w-full rounded bg-kumo-fill" />
+				<div className="h-3 w-16 rounded bg-kumo-fill" />
 			</div>
 		</div>
+	);
+}
+
+interface MailboxCardProps {
+	account: {
+		id: string;
+		email: string;
+		name: string;
+		summary?: import("~/types").MailboxSummary;
+		status?: import("~/types").MailboxStatus;
+	};
+	isConfigured: boolean;
+	onDelete: (id: string, email: string) => void;
+}
+
+function MailboxCard({ account, isConfigured, onDelete }: MailboxCardProps) {
+	const unreadCount = account.summary?.inboxUnreadCount ?? 0;
+	const hasUnread = unreadCount > 0;
+	const latestEmail = account.summary?.latestEmail;
+
+	return (
+		<RouterLink
+			to={`/mailbox/${account.id}`}
+			className="group relative flex flex-col rounded-xl border border-kumo-line bg-kumo-base no-underline transition-all duration-200 hover:border-kumo-brand/30 hover:shadow-md hover:bg-kumo-tint cursor-pointer"
+		>
+			<div className="p-5 flex-1 flex flex-col">
+				{/* Avatar row */}
+				<div className="flex items-start justify-between mb-4">
+					<div className="relative">
+						<div
+							className="h-12 w-12 shrink-0 flex items-center justify-center rounded-full text-lg font-bold text-white"
+							style={{ backgroundColor: getAvatarColor(account.email) }}
+						>
+							{account.name.charAt(0).toUpperCase()}
+						</div>
+						{hasUnread && (
+							<span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-kumo-brand px-1 text-xs font-semibold text-kumo-inverse ring-2 ring-kumo-base">
+								{unreadCount > 99 ? "99+" : unreadCount}
+							</span>
+						)}
+					</div>
+					{!isConfigured && (
+						<Button
+							variant="ghost"
+							size="sm"
+							shape="square"
+							icon={<TrashIcon size={14} />}
+							aria-label={`Delete mailbox ${account.email}`}
+							className="opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+							onClick={(e) => {
+								e.preventDefault();
+								e.stopPropagation();
+								onDelete(account.id, account.email);
+							}}
+						/>
+					)}
+				</div>
+
+				{/* Name & email */}
+				<div className="mb-auto">
+					<div className={`text-sm text-kumo-default truncate ${hasUnread ? "font-semibold" : "font-medium"}`}>
+						{account.name}
+					</div>
+					<div className="text-xs text-kumo-subtle truncate mt-0.5">{account.email}</div>
+				</div>
+
+				{/* Status badges */}
+				{'status' in account && (account.status?.forwardingEnabled || account.status?.autoReplyEnabled) && (
+					<div className="flex gap-1.5 mt-2">
+						{account.status?.forwardingEnabled && (
+							<span className="inline-flex items-center rounded-md bg-kumo-fill px-1.5 py-0.5 text-xs text-kumo-subtle">Forwarding</span>
+						)}
+						{account.status?.autoReplyEnabled && (
+							<span className="inline-flex items-center rounded-md bg-kumo-fill px-1.5 py-0.5 text-xs text-kumo-subtle">Auto-reply</span>
+						)}
+					</div>
+				)}
+			</div>
+
+			{/* Latest email footer */}
+			{latestEmail ? (
+				<div className="border-t border-kumo-line px-5 py-3">
+					<div className="flex items-baseline justify-between gap-2">
+						<span className="text-xs text-kumo-subtle truncate">
+							{parseSenderName(latestEmail.sender ?? "")}
+							{latestEmail.subject ? ` · ${latestEmail.subject}` : ""}
+						</span>
+						{latestEmail.date && (
+							<span className="shrink-0 text-xs text-kumo-subtle">
+								{formatRelativeDate(latestEmail.date)}
+							</span>
+						)}
+					</div>
+				</div>
+			) : (
+				<div className="border-t border-kumo-line px-5 py-3">
+					<span className="text-xs text-kumo-subtle">No emails yet</span>
+				</div>
+			)}
+		</RouterLink>
 	);
 }
 
@@ -55,6 +162,8 @@ export function meta() {
 
 export default function HomeRoute() {
 	const toastManager = useKumoToastManager();
+	const { data: session } = authClient.useSession();
+	const isAdmin = session?.user?.role === "admin";
 	const { data: mailboxes = [], refetch: refetchMailboxes, isFetched: mailboxesFetched, isLoading: mailboxesLoading } = useMailboxes();
 	const createMailbox = useCreateMailbox();
 	const deleteMailbox = useDeleteMailbox();
@@ -166,6 +275,8 @@ export default function HomeRoute() {
 
 	const isLoading = !configData || mailboxesLoading;
 
+	const canDelete = isAdmin && !isConfigured;
+
 	const groupedByDomain = useMemo(() => {
 		const groups: Record<string, typeof accounts> = {};
 		for (const account of accounts) {
@@ -179,19 +290,29 @@ export default function HomeRoute() {
 
 	return (
 		<div className="min-h-screen bg-kumo-recessed">
-			<div className="mx-auto max-w-2xl px-4 py-8 md:px-6 md:py-16">
+			<div className="mx-auto max-w-5xl px-4 py-8 md:px-6 md:py-16">
 				<div className="mb-8">
 					<div className="flex items-center justify-between">
 						<h1 className="text-2xl font-bold text-kumo-default">Mailboxes</h1>
-						{!isConfigured && (
-							<Button
-								variant="primary"
-								icon={<PlusIcon size={16} />}
-								onClick={() => setIsCreateOpen(true)}
-							>
-								New Mailbox
-							</Button>
-						)}
+						<div className="flex items-center gap-2">
+							{isAdmin && (
+								<RouterLink
+									to="/admin"
+									className="text-sm text-kumo-subtle hover:text-kumo-default transition-colors"
+								>
+									Admin
+								</RouterLink>
+							)}
+							{isAdmin && !isConfigured && (
+								<Button
+									variant="primary"
+									icon={<PlusIcon size={16} />}
+									onClick={() => setIsCreateOpen(true)}
+								>
+									New Mailbox
+								</Button>
+							)}
+						</div>
 					</div>
 					{domains.length > 0 && (
 						<p className="text-sm text-kumo-subtle mt-1">
@@ -201,99 +322,35 @@ export default function HomeRoute() {
 				</div>
 
 				{isLoading ? (
-					<div className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
-						<MailboxCardSkeleton />
-						<div className="border-t border-kumo-line"><MailboxCardSkeleton /></div>
-						<div className="border-t border-kumo-line"><MailboxCardSkeleton /></div>
+					<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+						{Array.from({ length: 3 }).map((_, i) => (
+							<MailboxCardSkeleton key={i} />
+						))}
 					</div>
 				) : accounts.length > 0 ? (
-					<div className="space-y-4">
+					<div className="space-y-6">
 						{groupedByDomain.map(([domain, domainAccounts]) => (
 							<div key={domain}>
 								{hasMultipleDomains && (
-									<div className="flex items-center gap-2 px-1 mb-2">
+									<div className="flex items-center gap-2 px-1 mb-3">
 										<span className="text-xs uppercase tracking-wider font-semibold text-kumo-subtle">
 											{domain}
 										</span>
 										<div className="flex-1 border-t border-kumo-line" />
 									</div>
 								)}
-								<div className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
-									{domainAccounts.map((account, idx) => {
-										const unreadCount = ('summary' in account ? account.summary?.inboxUnreadCount : undefined) ?? 0;
-										const hasUnread = unreadCount > 0;
-										const latestEmail = 'summary' in account ? account.summary?.latestEmail : undefined;
-										return (
-										<RouterLink
+								<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+									{domainAccounts.map((account) => (
+										<MailboxCard
 											key={account.id}
-											to={`/mailbox/${account.id}`}
-											className={`group flex items-center gap-4 px-5 py-4 no-underline transition-all duration-150 hover:bg-kumo-tint hover:shadow-sm border-l-2 ${
-												idx > 0 ? "border-t border-kumo-line" : ""
-											} ${hasUnread ? "border-l-kumo-brand" : "border-l-transparent"}`}
-										>
-											<div
-												className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
-												style={{ backgroundColor: getAvatarColor(account.email) }}
-											>
-												{account.name.charAt(0).toUpperCase()}
-											</div>
-											<div className="min-w-0 flex-1">
-												<div className="flex items-center justify-between gap-2">
-													<span className={`text-sm text-kumo-default truncate ${hasUnread ? "font-semibold" : "font-medium"}`}>
-														{account.name}
-													</span>
-													{hasUnread && (
-														<span className="shrink-0 rounded-full bg-kumo-brand px-2 py-0.5 text-xs font-semibold text-kumo-inverse">
-															{unreadCount}
-														</span>
-													)}
-												</div>
-												<div className="text-sm text-kumo-subtle">{account.email}</div>
-												{latestEmail && (
-													<div className="flex items-center justify-between gap-2 mt-1">
-														<span className="text-xs text-kumo-subtle truncate">
-															{parseSenderName(latestEmail.sender ?? "")}
-															{latestEmail.subject ? ` · ${latestEmail.subject}` : ""}
-														</span>
-														{latestEmail.date && (
-															<span className="shrink-0 text-xs text-kumo-subtle">
-																{formatRelativeDate(latestEmail.date)}
-															</span>
-														)}
-													</div>
-												)}
-												{('status' in account && (account.status?.forwardingEnabled || account.status?.autoReplyEnabled)) && (
-													<div className="flex gap-2 mt-1">
-														{account.status?.forwardingEnabled && (
-															<span className="text-xs text-kumo-subtle">⟳ Forwarding</span>
-														)}
-														{account.status?.autoReplyEnabled && (
-															<span className="text-xs text-kumo-subtle">↩ Auto-reply</span>
-														)}
-													</div>
-												)}
-											</div>
-											{!isConfigured && (
-												<Button
-													variant="ghost"
-													size="sm"
-													shape="square"
-													icon={<TrashIcon size={16} />}
-													aria-label={`Delete mailbox ${account.email}`}
-													onClick={(e) => {
-														e.preventDefault();
-														e.stopPropagation();
-														setMailboxToDelete({
-															id: account.id,
-															email: account.email,
-														});
-														setIsDeleteOpen(true);
-													}}
-												/>
-											)}
-										</RouterLink>
-										);
-									})}
+											account={account}
+											isConfigured={!canDelete}
+											onDelete={(id, email) => {
+												setMailboxToDelete({ id, email });
+												setIsDeleteOpen(true);
+											}}
+										/>
+									))}
 								</div>
 							</div>
 						))}
@@ -316,7 +373,7 @@ export default function HomeRoute() {
 									? "Your email routing is configured but no mailboxes have been created yet. They will appear here automatically."
 									: "Create a mailbox to start sending and receiving emails with your domain."}
 							</p>
-							{!isConfigured && (
+							{isAdmin && !isConfigured && (
 								<Button
 									variant="primary"
 									icon={<PlusIcon size={16} />}

@@ -9,12 +9,15 @@
  */
 import { createMiddleware } from "hono/factory";
 import type { MailboxDO } from "../durableObject";
+import type { AuthUser } from "../auth/middleware";
+import { hasMailboxAccess } from "../auth/permissions";
 import type { Env } from "../types";
 
 export type MailboxContext = {
 	Bindings: Env;
 	Variables: {
 		mailboxStub: DurableObjectStub<MailboxDO>;
+		user: AuthUser;
 	};
 };
 
@@ -30,12 +33,19 @@ export const requireMailbox = createMiddleware<MailboxContext>(async (c, next) =
 		return c.json({ error: "Not found" }, 404);
 	}
 
+	// Check per-mailbox access for non-admin users
+	const user = c.get("user");
+	if (user && user.role !== "admin") {
+		const allowed = await hasMailboxAccess(c.env, user.id, mailboxId);
+		if (!allowed) return c.json({ error: "Forbidden" }, 403);
+	}
+
 	// Instantiate DO stub
 	const ns = c.env.MAILBOX;
 	const id = ns.idFromName(mailboxId);
 	const stub = ns.get(id);
 
 	c.set("mailboxStub", stub);
-	
+
 	await next();
 });

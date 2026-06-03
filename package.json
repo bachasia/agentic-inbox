@@ -28,6 +28,7 @@
 		"typecheck": "npm run cf-typegen && react-router typegen && tsc -b"
 	},
 	"dependencies": {
+		"@ai-sdk/react": "^3.0.197",
 		"@cloudflare/ai-chat": "^0.1.8",
 		"@cloudflare/kumo": "^1.13.0",
 		"@phosphor-icons/react": "^2.1.10",
@@ -43,12 +44,12 @@
 		"@tiptap/starter-kit": "3.20.2",
 		"agents": "^0.7.6",
 		"ai": "^6.0.116",
+		"better-auth": "^1.6.14",
 		"dompurify": "^3.3.3",
 		"drizzle-orm": "^0.45.1",
 		"fflate": "^0.8.3",
 		"hono": "^4.7.11",
 		"isbot": "^5.1.27",
-		"jose": "^6.2.1",
 		"postal-mime": "^2.6.1",
 		"react": "^19.1.0",
 		"react-dom": "^19.1.0",

@@ -1,12 +1,9 @@
-// Copyright (c) 2026 Cloudflare, Inc.
-// Licensed under the Apache 2.0 license found in the LICENSE file or at:
-//     https://opensource.org/licenses/Apache-2.0
-
 import { routeAgentRequest } from "agents";
 import { Hono } from "hono";
-import { jwtVerify, createRemoteJWKSet } from "jose";
 import { createRequestHandler } from "react-router";
 import { app as apiApp, receiveEmail } from "./index";
+import { createAuth } from "./auth/server";
+import { requireAuth } from "./auth/middleware";
 import { logger } from "./lib/logger";
 import { EmailMCP } from "./mcp";
 import type { Env } from "./types";
@@ -29,78 +26,84 @@ const requestHandler = createRequestHandler(
 	import.meta.env.MODE,
 );
 
-function getAccessUrls(teamDomain: string) {
-	const certsPath = "/cdn-cgi/access/certs";
-	const normalized = teamDomain.startsWith("http") ? teamDomain : `https://${teamDomain}`;
-	const teamUrl = new URL(normalized);
-	const issuer = teamUrl.origin;
-	const certsUrl = teamUrl.pathname.endsWith(certsPath)
-		? teamUrl
-		: new URL(certsPath, issuer);
-
-	return { issuer, certsUrl };
-}
-
 // Main app that wraps the API and adds React Router fallback
 const app = new Hono<{ Bindings: Env }>();
 
-// Cloudflare Access JWT validation middleware (production only)
-app.use("*", async (c, next) => {
-	// Skip validation in development
-	if (import.meta.env.DEV) {
-		return next();
-	}
-
-	const { POLICY_AUD, TEAM_DOMAIN } = c.env;
-
-	// Fail closed in production if Access is not configured.
-	if (!POLICY_AUD || !TEAM_DOMAIN) {
-		return c.text(
-			"Cloudflare Access must be configured in production. Set POLICY_AUD and TEAM_DOMAIN.",
-			500,
-		);
-	}
-
-	const token = c.req.header("cf-access-jwt-assertion");
-	if (!token) {
-		return c.text("Missing required CF Access JWT", 403);
-	}
-
-	try {
-		const { issuer, certsUrl } = getAccessUrls(TEAM_DOMAIN);
-		const JWKS = createRemoteJWKSet(certsUrl);
-		await jwtVerify(token, JWKS, {
-			issuer,
-			audience: POLICY_AUD,
-		});
-	} catch {
-		return c.text("Invalid or expired Access token", 403);
-	}
-
-	// Authorization model note: once a teammate passes the shared Cloudflare
-	// Access policy, they can access all mailboxes in this app by design.
-	return next();
+// Better Auth handler — must be before session middleware
+app.on(["POST", "GET"], "/api/auth/*", async (c) => {
+	const auth = createAuth(c.env);
+	return auth.handler(c.req.raw);
 });
 
-// MCP server endpoint — used by AI coding tools (ProtoAgent, Claude Code, Cursor, etc.)
-// Must be before API routes and React Router catch-all
+// Public: check if any users exist (needed on /setup before auth)
+app.get("/api/v1/auth/setup-status", async (c) => {
+	const result = await c.env.AUTH_DB.prepare("SELECT COUNT(*) as count FROM user").first<{ count: number }>();
+	return c.json({ needsSetup: (result?.count ?? 0) === 0 });
+});
+
+// Public: create first admin account (only works when 0 users exist)
+app.post("/api/v1/auth/setup", async (c) => {
+	const count = await c.env.AUTH_DB.prepare("SELECT COUNT(*) as count FROM user").first<{ count: number }>();
+	if ((count?.count ?? 0) > 0) return c.json({ error: "Setup already complete" }, 409);
+
+	const { email, password, name } = await c.req.json() as { email: string; password: string; name: string };
+	if (!email || !password || !name) return c.json({ error: "email, password, and name are required" }, 400);
+
+	const auth = createAuth(c.env);
+	const signUpResponse = await auth.api.signUpEmail({
+		body: { email, password, name },
+		headers: c.req.raw.headers,
+		asResponse: true,
+	});
+
+	if (!signUpResponse.ok) return signUpResponse;
+
+	// Clone response to read user id without consuming the original (which carries session cookies)
+	const cloned = signUpResponse.clone();
+	const userData = await cloned.json() as { user: { id: string } };
+	await c.env.AUTH_DB.prepare(`UPDATE "user" SET role = 'admin' WHERE id = ?`).bind(userData.user.id).run();
+
+	return signUpResponse;
+});
+
+// MCP server endpoint — optional API key auth
 const mcpHandler = EmailMCP.serve("/mcp", { binding: "EMAIL_MCP" });
 app.all("/mcp", async (c) => {
+	if (!import.meta.env.DEV && c.env.MCP_API_KEY) {
+		const authHeader = c.req.header("Authorization");
+		if (authHeader !== `Bearer ${c.env.MCP_API_KEY}`) {
+			return c.text("Unauthorized", 401);
+		}
+	}
 	return mcpHandler.fetch(c.req.raw, c.env, c.executionCtx as ExecutionContext);
 });
 app.all("/mcp/*", async (c) => {
+	if (!import.meta.env.DEV && c.env.MCP_API_KEY) {
+		const authHeader = c.req.header("Authorization");
+		if (authHeader !== `Bearer ${c.env.MCP_API_KEY}`) {
+			return c.text("Unauthorized", 401);
+		}
+	}
 	return mcpHandler.fetch(c.req.raw, c.env, c.executionCtx as ExecutionContext);
 });
 
-// Mount the API routes
-app.route("/", apiApp);
-
-// Agent WebSocket routing - must be before React Router catch-all
+// Agent WebSocket — requires valid session
 app.all("/agents/*", async (c) => {
+	if (!import.meta.env.DEV) {
+		const auth = createAuth(c.env);
+		const session = await auth.api.getSession({ headers: c.req.raw.headers });
+		if (!session) return c.text("Unauthorized", 401);
+	}
 	const response = await routeAgentRequest(c.req.raw, c.env);
 	if (response) return response;
 	return c.text("Agent not found", 404);
 });
+
+// Session middleware for all /api/v1/* routes
+app.use("/api/v1/*", requireAuth);
+
+// Mount the API routes
+app.route("/", apiApp);
 
 // React Router catch-all: serves the SPA for all non-API routes
 app.all("*", (c) => {
@@ -122,7 +125,6 @@ export default {
 		} catch (e) {
 			logger.error("email-receive", "Failed to process incoming email", { error: e });
 			// Re-throw so Cloudflare's email routing can retry delivery or bounce the message.
-			// Swallowing the error would silently drop the email.
 			throw e;
 		}
 	},

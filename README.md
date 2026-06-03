@@ -23,22 +23,40 @@ https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
 
      [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/bachasia/agentic-inbox)
 
-2. **Configure Cloudflare Access** -- Enable [one-click Cloudflare Access](https://developers.cloudflare.com/changelog/post/2025-10-03-one-click-access-for-workers/) on your Worker under Settings > Domains & Routes. The modal will show your `POLICY_AUD` and `TEAM_DOMAIN` values. `TEAM_DOMAIN` can be either your Access team URL or the full `.../cdn-cgi/access/certs` URL. **You must set these as secrets for your Worker.**
-3. **Set up Email Routing** -- In the Cloudflare dashboard, go to your domain > Email Routing and create a catch-all rule that forwards to this Worker
-4. **Enable Email Service** -- The worker needs the `send_email` binding to send outbound emails. See [Email Service docs](https://developers.cloudflare.com/email-routing/email-workers/send-email-workers/)
-5. **Create the Vectorize index for semantic search** -- Run both commands (the metadata index is required for per-mailbox filtering):
+2. **Create D1 databases** -- Run the following commands and paste the returned IDs into `wrangler.jsonc`:
+   ```bash
+   npx wrangler d1 create auth-db
+   npx wrangler d1 create auth-db-production
+   ```
+3. **Apply D1 migration** -- Run the migration to create auth tables:
+   ```bash
+   npx wrangler d1 migrations apply auth-db --local
+   npx wrangler d1 migrations apply auth-db-production --remote --env production
+   ```
+4. **Set required secrets** -- Generate a random 32+ character string for `BETTER_AUTH_SECRET`:
+   ```bash
+   npx wrangler secret put BETTER_AUTH_SECRET --env production
+   npx wrangler secret put BETTER_AUTH_URL --env production
+   # BETTER_AUTH_URL = your deployed Worker URL, e.g. https://your-inbox.workers.dev
+   ```
+5. **Set up Email Routing** -- In the Cloudflare dashboard, go to your domain > Email Routing and create a catch-all rule that forwards to this Worker
+6. **Enable Email Service** -- The worker needs the `send_email` binding to send outbound emails. See [Email Service docs](https://developers.cloudflare.com/email-routing/email-workers/send-email-workers/)
+7. **Create the Vectorize index for semantic search** -- Run both commands (the metadata index is required for per-mailbox filtering):
    ```bash
    npx wrangler vectorize create email-embeddings --dimensions 768 --metric cosine
    npx wrangler vectorize create-metadata-index email-embeddings --property-name=mailboxId --type=string
    ```
-6. **Create a mailbox** -- Visit your deployed app and create a mailbox for any address on your domain (e.g. `hello@example.com`)
+8. **Create your admin account** -- Visit your deployed app. You'll be redirected to `/setup` to create the first admin account.
+9. **Create mailboxes** -- Log in as admin, then create mailboxes from the home page or admin panel (e.g. `hello@example.com`)
+10. **Invite team members** -- Go to `/admin` to create member accounts and assign them mailbox access
 
-### Troubleshooting Access
+### MCP access (optional)
 
-1. If you see `Invalid or expired Access token`, that usually means `POLICY_AUD` or `TEAM_DOMAIN` secrets are incorrect.
-   * Resolution: [turn Access off and back on for the Worker to get the Access modal again](https://developers.cloudflare.com/changelog/post/2025-10-03-one-click-access-for-workers/), then reset your Worker secrets to the latest `POLICY_AUD` and `TEAM_DOMAIN` values shown there.
-2. If you see `Cloudflare Access must be configured in production`, this application is intentionally enforcing Cloudflare Access so your inbox is not exposed to anyone on the internet.
-   * Resolution: enable Access using [one-click Cloudflare Access for Workers](https://developers.cloudflare.com/changelog/post/2025-10-03-one-click-access-for-workers/), then set the `POLICY_AUD` and `TEAM_DOMAIN` Worker secrets from the modal values.
+The MCP server at `/mcp` is open by default (for dev/local use). To require an API key in production:
+```bash
+npx wrangler secret put MCP_API_KEY --env production
+```
+Then pass `Authorization: Bearer <key>` in your MCP client configuration.
 
 ## Features
 
@@ -65,7 +83,7 @@ https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
 - **Frontend:** React 19, React Router v7, Tailwind CSS, Zustand, TipTap, `@cloudflare/kumo`
 - **Backend:** Hono, Cloudflare Workers, Durable Objects (SQLite), R2, Email Routing
 - **AI Agent:** Cloudflare Agents SDK (`AIChatAgent`), AI SDK v6, Workers AI (`@cf/moonshotai/kimi-k2.5`), `react-markdown` + `remark-gfm`
-- **Auth:** Cloudflare Access JWT validation (required outside local development)
+- **Auth:** Better Auth (email/password, D1-backed sessions, Admin/Member RBAC)
 
 ## Getting Started
 
@@ -91,9 +109,7 @@ npm run deploy
 - [Email Routing](https://developers.cloudflare.com/email-routing/) enabled for receiving
 - [Email Service](https://developers.cloudflare.com/email-service/) enabled for sending
 - [Workers AI](https://developers.cloudflare.com/workers-ai/) enabled (for the agent)
-- [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/) configured for deployed/shared environments (required in production)
-
-Any user who passes the shared Cloudflare Access policy can access all mailboxes in this app by design. This includes the MCP server at `/mcp` -- external AI tools (Claude Code, Cursor, etc.) connected via MCP can operate on any mailbox by passing a `mailboxId` parameter. There is no per-mailbox authorization; the Cloudflare Access policy is the single trust boundary.
+Users authenticate via email/password. Admins manage team members and assign mailbox access via the `/admin` panel. Members only see mailboxes assigned to them. The MCP server at `/mcp` supports optional API key auth via the `MCP_API_KEY` secret.
 
 ## Architecture
 

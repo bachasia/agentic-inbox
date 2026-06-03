@@ -25,6 +25,9 @@ import { Folders } from "../shared/folders";
 import type { Env } from "./types";
 import { logger } from "./lib/logger";
 import { requireMailbox, type MailboxContext } from "./lib/mailbox";
+import { requireAdmin } from "./auth/middleware";
+import { getUserMailboxIds } from "./auth/permissions";
+import { adminRoutes } from "./routes/admin-routes";
 
 type AppContext = Context<MailboxContext>;
 
@@ -86,6 +89,9 @@ app.use("/api/*", cors({
 		return undefined;
 	},
 }));
+app.use("/api/v1/admin/*", requireAdmin);
+app.route("/api/v1/admin", adminRoutes);
+
 app.use("/api/v1/mailboxes/:mailboxId/*", requireMailbox);
 
 // -- Config ---------------------------------------------------------
@@ -100,9 +106,18 @@ app.get("/api/v1/config", (c) => {
 // -- Mailboxes ------------------------------------------------------
 
 app.get("/api/v1/mailboxes", async (c) => {
+	const user = c.get("user");
 	const allMailboxes = await listMailboxes(c.env.BUCKET);
+
+	// Members only see their assigned mailboxes
+	let visibleMailboxes = allMailboxes;
+	if (user && user.role !== "admin") {
+		const allowedIds = new Set(await getUserMailboxIds(c.env, user.id));
+		visibleMailboxes = allMailboxes.filter((m) => allowedIds.has(m.id));
+	}
+
 	const enriched = await Promise.all(
-		allMailboxes.map(async (m) => {
+		visibleMailboxes.map(async (m) => {
 			const stub = c.env.MAILBOX.get(c.env.MAILBOX.idFromName(m.id));
 			const [summary, settingsObj] = await Promise.all([
 				(stub as any).getMailboxSummary(),
@@ -123,7 +138,7 @@ app.get("/api/v1/mailboxes", async (c) => {
 	return c.json(enriched);
 });
 
-app.post("/api/v1/mailboxes", async (c) => {
+app.post("/api/v1/mailboxes", requireAdmin, async (c) => {
 	const { name, settings, email: rawEmail } = CreateMailboxBody.parse(await c.req.json());
 	const email = rawEmail.toLowerCase();
 	const allowedAddresses = (c.env.EMAIL_ADDRESSES ?? []) as string[];
@@ -174,7 +189,7 @@ app.put("/api/v1/mailboxes/:mailboxId", async (c) => {
 	return c.json({ id: mailboxId, name: mailboxId, email: mailboxId, settings });
 });
 
-app.delete("/api/v1/mailboxes/:mailboxId", async (c) => {
+app.delete("/api/v1/mailboxes/:mailboxId", requireAdmin, async (c) => {
 	const mailboxId = c.req.param("mailboxId")!;
 	const key = `mailboxes/${mailboxId}.json`;
 	if (!(await c.env.BUCKET.head(key))) return c.json({ error: "Not found" }, 404);

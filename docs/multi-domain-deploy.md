@@ -81,18 +81,20 @@ env:
 
 Push to `main` — the new domain is now included in all future auto-deploys.
 
-### Step 4 — Configure Cloudflare Access
-
-In Cloudflare dashboard → Workers → `dtc-inbox-<slug>` → Settings → Domains & Routes:
-
-1. Enable one-click Cloudflare Access
-2. Copy `POLICY_AUD` and `TEAM_DOMAIN` from the modal
-3. Set them as Worker secrets:
+### Step 4 — Configure Better Auth secrets
 
 ```bash
-wrangler secret put POLICY_AUD --env <slug>
-wrangler secret put TEAM_DOMAIN --env <slug>
+wrangler secret put BETTER_AUTH_SECRET --env <slug>
+wrangler secret put BETTER_AUTH_URL --env <slug>
+# BETTER_AUTH_URL = the Worker's public URL, e.g. https://dtc-inbox-<slug>.workers.dev
 ```
+
+Apply the D1 migration for the new env:
+```bash
+npx wrangler d1 migrations apply auth-db-<slug> --remote --env <slug>
+```
+
+Then visit the app and complete first-time setup at `/setup` to create your admin account.
 
 ### Step 5 — Set up Email Routing
 
