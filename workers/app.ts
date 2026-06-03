@@ -31,7 +31,8 @@ const requestHandler = createRequestHandler(
 
 function getAccessUrls(teamDomain: string) {
 	const certsPath = "/cdn-cgi/access/certs";
-	const teamUrl = new URL(teamDomain);
+	const normalized = teamDomain.startsWith("http") ? teamDomain : `https://${teamDomain}`;
+	const teamUrl = new URL(normalized);
 	const issuer = teamUrl.origin;
 	const certsUrl = teamUrl.pathname.endsWith(certsPath)
 		? teamUrl
