@@ -67,7 +67,7 @@ async function staleWhileRevalidate(request, cacheName) {
 			if (response.ok) cache.put(request, response.clone());
 			return response;
 		})
-		.catch(() => cached);
+		.catch(() => cached || new Response("", { status: 503, statusText: "Service Unavailable" }));
 
 	return cached || fetchPromise;
 }

@@ -86,7 +86,13 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 
 	const moveToFolders = useMemo(() => { const cur = folder || email?.folder_id; return folders.filter((f) => f.id !== cur); }, [folders, folder, email?.folder_id]);
 
+	// Hooks must be called unconditionally before any early return
+	const { data: actionItems = [] } = useActionItems(mailboxId, false);
+	const completeActionItem = useCompleteActionItem(mailboxId ?? "");
+
 	if (!email) return <EmailPanelSkeleton />;
+
+	const visibleActionItems = actionItems.filter((item) => item.emailId === email.id && !item.completedAt);
 
 	const toggleStar = () => { if (mailboxId) updateEmail.mutate({ mailboxId, id: email.id, data: { starred: !email.starred } }); };
 	const handleMove = (folderId: string) => { if (mailboxId) { moveEmailMut.mutate({ mailboxId, id: email.id, folderId }); closePanel(); } };
@@ -139,10 +145,6 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	};
 
 	const hasThread = allMessages.length > 1;
-
-	const { data: actionItems = [] } = useActionItems(mailboxId, false);
-	const visibleActionItems = actionItems.filter((item) => item.emailId === email.id && !item.completedAt);
-	const completeActionItem = useCompleteActionItem(mailboxId ?? "");
 
 	return (
 		<div className="flex flex-col h-full">
