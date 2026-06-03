@@ -6,9 +6,10 @@ import type { Env } from "../types";
 
 export function createAuth(env: Env) {
 	return betterAuth({
-		database: drizzleAdapter(drizzle(env.AUTH_DB)),
+		database: drizzleAdapter(drizzle(env.AUTH_DB), { provider: "sqlite" }),
 		secret: env.BETTER_AUTH_SECRET,
 		baseURL: env.BETTER_AUTH_URL || "http://localhost:8787",
+		trustedOrigins: [env.BETTER_AUTH_URL || "http://localhost:8787"],
 		emailAndPassword: { enabled: true },
 		session: {
 			expiresIn: 60 * 60 * 24 * 7, // 7 days
