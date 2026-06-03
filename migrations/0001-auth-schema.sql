@@ -1,24 +1,26 @@
 -- Better Auth core tables
+-- Date fields use INTEGER (milliseconds) so Drizzle's timestamp_ms mode can bind
+-- D1 does not accept Date objects in bind(); integers work fine.
 CREATE TABLE IF NOT EXISTS "user" (
     "id" TEXT PRIMARY KEY,
     "name" TEXT NOT NULL,
     "email" TEXT NOT NULL UNIQUE,
     "emailVerified" INTEGER NOT NULL DEFAULT 0,
     "image" TEXT,
-    "createdAt" TEXT NOT NULL,
-    "updatedAt" TEXT NOT NULL,
+    "createdAt" INTEGER NOT NULL,
+    "updatedAt" INTEGER NOT NULL,
     "role" TEXT DEFAULT 'member',
     "banned" INTEGER DEFAULT 0,
     "banReason" TEXT,
-    "banExpires" TEXT
+    "banExpires" INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS "session" (
     "id" TEXT PRIMARY KEY,
-    "expiresAt" TEXT NOT NULL,
+    "expiresAt" INTEGER NOT NULL,
     "token" TEXT NOT NULL UNIQUE,
-    "createdAt" TEXT NOT NULL,
-    "updatedAt" TEXT NOT NULL,
+    "createdAt" INTEGER NOT NULL,
+    "updatedAt" INTEGER NOT NULL,
     "ipAddress" TEXT,
     "userAgent" TEXT,
     "userId" TEXT NOT NULL,
@@ -34,12 +36,12 @@ CREATE TABLE IF NOT EXISTS "account" (
     "accessToken" TEXT,
     "refreshToken" TEXT,
     "idToken" TEXT,
-    "accessTokenExpiresAt" TEXT,
-    "refreshTokenExpiresAt" TEXT,
+    "accessTokenExpiresAt" INTEGER,
+    "refreshTokenExpiresAt" INTEGER,
     "scope" TEXT,
     "password" TEXT,
-    "createdAt" TEXT NOT NULL,
-    "updatedAt" TEXT NOT NULL,
+    "createdAt" INTEGER NOT NULL,
+    "updatedAt" INTEGER NOT NULL,
     FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE
 );
 
@@ -47,9 +49,9 @@ CREATE TABLE IF NOT EXISTS "verification" (
     "id" TEXT PRIMARY KEY,
     "identifier" TEXT NOT NULL,
     "value" TEXT NOT NULL,
-    "expiresAt" TEXT NOT NULL,
-    "createdAt" TEXT,
-    "updatedAt" TEXT
+    "expiresAt" INTEGER NOT NULL,
+    "createdAt" INTEGER,
+    "updatedAt" INTEGER
 );
 
 -- Custom table: per-user mailbox access permissions
