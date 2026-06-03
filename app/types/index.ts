@@ -55,6 +55,40 @@ export interface ActionItem {
 	createdAt: string;
 }
 
+export interface WooCommerceSettings {
+	enabled: boolean;
+	storeUrl: string;
+	consumerKey: string;
+	consumerSecret: string;
+}
+
+export interface WooCommerceTracking {
+	trackingNumber: string;
+	trackingProvider: string;
+	customTrackingProvider?: string;
+	customTrackingLink?: string;
+	dateShipped?: string;
+}
+
+export interface WooCommerceLineItem {
+	name: string;
+	quantity: number;
+	total: string;
+}
+
+export interface WooCommerceOrder {
+	id: number;
+	number: string;
+	status: string;
+	total: string;
+	currency: string;
+	dateCreated: string;
+	paymentMethodTitle: string;
+	shippingMethod?: string;
+	lineItems: WooCommerceLineItem[];
+	tracking: WooCommerceTracking[];
+}
+
 export interface MailboxSettings {
 	fromName?: string;
 	forwarding?: { enabled: boolean; email: string };
@@ -66,6 +100,7 @@ export interface MailboxSettings {
 	unansweredDays?: number;
 	digestEnabled?: boolean;
 	digestTime?: string;
+	woocommerce?: WooCommerceSettings;
 }
 
 export interface Mailbox {
