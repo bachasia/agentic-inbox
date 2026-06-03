@@ -9,7 +9,6 @@
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
-
 	// ─── Default (local dev only) ────────────────────────────────────────────────
 	// Run `npm run dev` without specifying an env.
 	// POLICY_AUD and TEAM_DOMAIN are not required in local dev.
@@ -75,7 +74,6 @@
 			]
 		}
 	],
-
 	// ─── Production environments ─────────────────────────────────────────────────
 	// Add one block per domain. Deploy with: wrangler deploy --env <name>
 	// Each env needs its own R2 bucket and Vectorize index (see docs/multi-domain-deploy.md).
@@ -145,16 +143,53 @@
 					]
 				}
 			]
+		},
+
+		// ─── Single-worker multi-domain (Pattern B) ──────────────────────────────
+		"production": {
+			"name": "dtc-inbox-production",
+			"vars": {
+				"DOMAINS": "kozmozracing.com,ezcustomcar.com,littleowh.com,aloprints.com",
+				"EMAIL_ADDRESSES": []
+			},
+			"send_email": [
+				{
+					"name": "EMAIL",
+					"remote": true
+				}
+			],
+			"r2_buckets": [
+				{
+					"binding": "BUCKET",
+					"bucket_name": "dtc-inbox-production",
+					"preview_bucket_name": "dtc-inbox-production"
+				}
+			],
+			"ai": {
+				"binding": "AI"
+			},
+			"vectorize": [
+				{
+					"binding": "VECTORIZE",
+					"index_name": "email-embeddings-production"
+				}
+			],
+			"durable_objects": {
+				"bindings": [
+					{ "name": "MAILBOX",     "class_name": "MailboxDO" },
+					{ "name": "EMAIL_AGENT", "class_name": "EmailAgent" },
+					{ "name": "EMAIL_MCP",   "class_name": "EmailMCP" }
+				]
+			},
+			"migrations": [
+				{ "tag": "v1", "new_sqlite_classes": ["MailboxDO"] },
+				{ "tag": "v2", "new_sqlite_classes": ["EmailAgent"] },
+				{ "tag": "v3", "new_sqlite_classes": ["EmailMCP"] }
+			]
 		}
 
 		// ── Add more domains below ──────────────────────────────────────────────
 		// Copy the block above, change the key name, "name", "DOMAINS",
 		// "bucket_name", and "index_name". Then follow docs/multi-domain-deploy.md.
-		//
-		// "example-com": {
-		//   "name": "dtc-inbox-example-com",
-		//   "vars": { "DOMAINS": "example.com", "EMAIL_ADDRESSES": [] },
-		//   ...
-		// }
 	}
 }
