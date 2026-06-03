@@ -30,6 +30,9 @@ import {
 	toolDiscardDraft,
 	toolGetActionItems,
 	toolGetPendingFollowUps,
+	toolSemanticSearch,
+	toolAskAboutEmails,
+	toolGetContactIntelligence,
 } from "../lib/tools";
 import { Folders, FOLDER_TOOL_DESCRIPTION, MOVE_FOLDER_TOOL_DESCRIPTION } from "../../shared/folders";
 import type { Env } from "../types";
@@ -87,7 +90,16 @@ You can ONLY draft emails. You do NOT have the ability to send emails directly.
 **Don't paste draft contents into the chat.** The drafts are saved via tools - the operator can see them in the Drafts folder. In your chat message, just briefly say what you drafted (e.g. "Drafted a reply to Tim"). Don't duplicate the full email body in the chat.
 
 ## Draft Management
-Use discard_draft to delete drafts that the operator rejects or that are no longer needed.`;
+Use discard_draft to delete drafts that the operator rejects or that are no longer needed.
+
+## Search Capabilities
+You have three search modes:
+- **search_emails**: Keyword/operator search (from:, subject:, etc.). Use when the user gives exact terms.
+- **semantic_search**: Meaning-based search. Use when the user describes a topic or asks to "find emails about X".
+- **ask_about_emails**: Full Q&A over email history. Use for questions like "What did Bob say about the deadline?" or "When did we last discuss pricing?" Returns a synthesized answer with citations.
+
+## Contact Intelligence
+Use **get_contact_intelligence** to look up communication stats for a contact (email count, avg response time, relationship score, top topics). Use when asked "How often do I talk to X?" or "Tell me about my relationship with X".`;
 
 /**
  * Fetch the custom system prompt for a mailbox from its R2 settings.
@@ -294,6 +306,37 @@ function createEmailTools(env: Env, mailboxId: string) {
 			}),
 			execute: async ({ days }): Promise<unknown> => {
 				return toolGetPendingFollowUps(env, mailboxId, { days });
+			},
+		}),
+
+		semantic_search: defineTool({
+			description: "Search emails by meaning/concept, not just keywords. Use when the user describes a topic, event, or person without providing exact search terms. Returns emails ranked by semantic relevance.",
+			parameters: z.object({
+				query: z.string().describe("Natural language search query describing what to find"),
+				limit: z.number().default(10).describe("Maximum number of results to return"),
+			}),
+			execute: async ({ query, limit }): Promise<unknown> => {
+				return toolSemanticSearch(env, mailboxId, { query, limit });
+			},
+		}),
+
+		ask_about_emails: defineTool({
+			description: "Ask a question about the user's email history and get a synthesized answer with citations. Use for questions like 'What did Bob say about the deadline?', 'When did we last discuss pricing?', or 'What was the outcome of the project meeting?'.",
+			parameters: z.object({
+				question: z.string().describe("Natural language question about past email conversations"),
+			}),
+			execute: async ({ question }): Promise<unknown> => {
+				return toolAskAboutEmails(env, mailboxId, { question });
+			},
+		}),
+
+		get_contact_intelligence: defineTool({
+			description: "Get intelligence about a contact: total emails exchanged, avg response time, relationship score (0-100), and top discussion topics. Use when asked about communication patterns with a specific person.",
+			parameters: z.object({
+				contactEmail: z.string().describe("Email address of the contact to look up"),
+			}),
+			execute: async ({ contactEmail }): Promise<unknown> => {
+				return toolGetContactIntelligence(env, mailboxId, { contactEmail });
 			},
 		}),
 	};
