@@ -10,14 +10,14 @@ Updates push to all domains automatically via GitHub Actions on every merge to `
 ## Architecture
 
 ```
-bachasia/agentic-inbox (single repo)
+bachasia/dtc-inbox (single repo)
   ├── wrangler.jsonc          ← one env block per domain
   ├── scripts/setup-domain.sh ← one-time setup per domain
   └── .github/workflows/ci.yml (DEPLOY_ENVS: bach-asia example-com ...)
         │
-        ├── push to main → build → deploy env: bach-asia    → agentic-inbox-bach-asia
-        │                        → deploy env: example-com  → agentic-inbox-example-com
-        └──                      → deploy env: another-org  → agentic-inbox-another-org
+        ├── push to main → build → deploy env: bach-asia    → dtc-inbox-bach-asia
+        │                        → deploy env: example-com  → dtc-inbox-example-com
+        └──                      → deploy env: another-org  → dtc-inbox-another-org
 ```
 
 Each environment has isolated storage: its own R2 bucket, Vectorize index, and Durable Objects.
@@ -36,7 +36,7 @@ Each environment has isolated storage: its own R2 bucket, Vectorize index, and D
 ```
 
 The script will:
-- Create the R2 bucket (`agentic-inbox-<slug>`)
+- Create the R2 bucket (`dtc-inbox-<slug>`)
 - Create the Vectorize index + metadata index (`email-embeddings-<slug>`)
 - Print the `wrangler.jsonc` env block to paste in
 - Wait for confirmation, then run the first deploy
@@ -47,11 +47,11 @@ The script prints the exact block to paste inside `"env": { ... }`. Example:
 
 ```jsonc
 "example-com": {
-  "name": "agentic-inbox-example-com",
+  "name": "dtc-inbox-example-com",
   "vars": { "DOMAINS": "example.com", "EMAIL_ADDRESSES": [] },
   "send_email": [{ "name": "EMAIL", "remote": true }],
   "r2_buckets": [
-    { "binding": "BUCKET", "bucket_name": "agentic-inbox-example-com", "preview_bucket_name": "agentic-inbox-example-com" }
+    { "binding": "BUCKET", "bucket_name": "dtc-inbox-example-com", "preview_bucket_name": "dtc-inbox-example-com" }
   ],
   "ai": { "binding": "AI" },
   "vectorize": [{ "binding": "VECTORIZE", "index_name": "email-embeddings-example-com" }],
@@ -83,7 +83,7 @@ Push to `main` — the new domain is now included in all future auto-deploys.
 
 ### Step 4 — Configure Cloudflare Access
 
-In Cloudflare dashboard → Workers → `agentic-inbox-<slug>` → Settings → Domains & Routes:
+In Cloudflare dashboard → Workers → `dtc-inbox-<slug>` → Settings → Domains & Routes:
 
 1. Enable one-click Cloudflare Access
 2. Copy `POLICY_AUD` and `TEAM_DOMAIN` from the modal
@@ -97,7 +97,7 @@ wrangler secret put TEAM_DOMAIN --env <slug>
 ### Step 5 — Set up Email Routing
 
 Cloudflare dashboard → your domain → Email Routing:
-- Create a catch-all rule forwarding to Worker `agentic-inbox-<slug>`
+- Create a catch-all rule forwarding to Worker `dtc-inbox-<slug>`
 
 ### Step 6 — Create mailboxes
 
@@ -133,7 +133,7 @@ All domains get the update in one pipeline run. No manual action needed.
 
 | Slug | Domain | Worker | R2 Bucket | Vectorize Index |
 |---|---|---|---|---|
-| `bach-asia` | `bach.asia` | `agentic-inbox-bach-asia` | `agentic-inbox-bach-asia` | `email-embeddings-bach-asia` |
+| `bach-asia` | `bach.asia` | `dtc-inbox-bach-asia` | `dtc-inbox-bach-asia` | `email-embeddings-bach-asia` |
 
 ---
 
@@ -159,7 +159,7 @@ One Worker handles all domains. Simpler setup, shared resources, single UI.
 
 ```
 Domain A (Email Routing catch-all) ──┐
-Domain B (Email Routing catch-all) ──┼──▶ Worker "agentic-inbox-bach-asia"
+Domain B (Email Routing catch-all) ──┼──▶ Worker "dtc-inbox-bach-asia"
 Domain C (Email Routing catch-all) ──┘        │
                                               ├── R2 bucket (shared)
                                               ├── Vectorize index (shared)
@@ -183,7 +183,7 @@ Each mailbox is isolated via Durable Objects (keyed by full email address), so `
 
 **Step 3** — Configure Email Routing for new domain:
 - Cloudflare dashboard → new domain → Email Routing → Enable
-- Create catch-all rule → forward to **existing** Worker (`agentic-inbox-bach-asia`)
+- Create catch-all rule → forward to **existing** Worker (`dtc-inbox-bach-asia`)
 
 **Step 4** — Configure DNS for outbound email:
 - Add SPF record: `v=spf1 include:_spf.mx.cloudflare.net ~all`

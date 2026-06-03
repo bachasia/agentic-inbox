@@ -1,6 +1,6 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "agentic-inbox",
+	"name": "dtc-inbox",
 	"compatibility_date": "2025-11-28",
 	"main": "./workers/app.ts",
 	"observability": {
@@ -26,8 +26,8 @@
 	"r2_buckets": [
 		{
 			"binding": "BUCKET",
-			"bucket_name": "agentic-inbox",
-			"preview_bucket_name": "agentic-inbox"
+			"bucket_name": "dtc-inbox",
+			"preview_bucket_name": "dtc-inbox"
 		}
 	],
 	"ai": {
@@ -82,7 +82,7 @@
 	// Set POLICY_AUD and TEAM_DOMAIN as Worker secrets after first deploy.
 	"env": {
 		"bach-asia": {
-			"name": "agentic-inbox-bach-asia",
+			"name": "dtc-inbox-bach-asia",
 			"vars": {
 				"DOMAINS": "bach.asia",
 				"EMAIL_ADDRESSES": []
@@ -96,8 +96,8 @@
 			"r2_buckets": [
 				{
 					"binding": "BUCKET",
-					"bucket_name": "agentic-inbox-bach-asia",
-					"preview_bucket_name": "agentic-inbox-bach-asia"
+					"bucket_name": "dtc-inbox-bach-asia",
+					"preview_bucket_name": "dtc-inbox-bach-asia"
 				}
 			],
 			"ai": {
@@ -152,7 +152,7 @@
 		// "bucket_name", and "index_name". Then follow docs/multi-domain-deploy.md.
 		//
 		// "example-com": {
-		//   "name": "agentic-inbox-example-com",
+		//   "name": "dtc-inbox-example-com",
 		//   "vars": { "DOMAINS": "example.com", "EMAIL_ADDRESSES": [] },
 		//   ...
 		// }

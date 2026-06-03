@@ -14,9 +14,9 @@ if [[ -z "$SLUG" || -z "$DOMAIN" ]]; then
   exit 1
 fi
 
-BUCKET="agentic-inbox-${SLUG}"
+BUCKET="dtc-inbox-${SLUG}"
 INDEX="email-embeddings-${SLUG}"
-ENV_NAME="agentic-inbox-${SLUG}"
+ENV_NAME="dtc-inbox-${SLUG}"
 
 echo ""
 echo "=== Setting up Agentic Inbox for ${DOMAIN} ==="
