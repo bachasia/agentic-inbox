@@ -3,7 +3,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { Button, Input, Tooltip } from "@cloudflare/kumo";
-import { GearSixIcon, ListIcon, MagnifyingGlassIcon, RobotIcon, XIcon } from "@phosphor-icons/react";
+import { GearSixIcon, ListIcon, MagnifyingGlassIcon, RobotIcon, UserCircleIcon, XIcon } from "@phosphor-icons/react";
 import ThemeToggleButton from "./theme-toggle-button";
 import { type KeyboardEvent, useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
@@ -55,6 +55,7 @@ export default function Header() {
 	};
 
 	const isSettingsActive = location.pathname.includes("/settings");
+	const isProfileActive = location.pathname === "/profile";
 
 	return (
 		<header className="flex items-center gap-2 px-3 py-2.5 bg-kumo-base border-b border-kumo-line sticky top-0 z-10 md:px-5 md:gap-4">
@@ -120,6 +121,15 @@ export default function Header() {
 			)}
 
 			<div className="flex items-center gap-1 ml-auto shrink-0">
+				<Tooltip content="Profile" side="bottom" asChild>
+					<Button
+						variant={isProfileActive ? "secondary" : "ghost"}
+						shape="square"
+						icon={<UserCircleIcon size={20} />}
+						onClick={() => navigate("/profile")}
+						aria-label="Profile"
+					/>
+				</Tooltip>
 				<ThemeToggleButton />
 				<Tooltip content={isAgentPanelOpen ? "Hide agent panel" : "Show agent panel"} side="bottom" asChild>
 					<Button

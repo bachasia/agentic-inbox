@@ -96,6 +96,49 @@ app.put("/users/:userId", async (c) => {
 	return c.json({ userId, role });
 });
 
+// Update user credentials (name, email, password) — admin only
+app.put("/users/:userId/credentials", async (c) => {
+	const { userId } = c.req.param();
+	const body = await c.req.json() as { name?: string; email?: string; password?: string };
+
+	if (!body.name && !body.email && !body.password) {
+		return c.json({ error: "At least one field required" }, 400);
+	}
+	if (body.password !== undefined && body.password.length < 8) {
+		return c.json({ error: "Password must be at least 8 characters" }, 400);
+	}
+
+	const auth = createAuth(c.env);
+
+	if (body.name !== undefined || body.email !== undefined) {
+		if (body.email) {
+			const existing = await c.env.AUTH_DB.prepare(
+				`SELECT id FROM "user" WHERE email = ? AND id != ?`
+			).bind(body.email, userId).first();
+			if (existing) return c.json({ error: "Email already in use" }, 409);
+		}
+		await auth.api.adminUpdateUser({
+			body: {
+				userId,
+				data: {
+					...(body.name !== undefined && { name: body.name }),
+					...(body.email !== undefined && { email: body.email }),
+				},
+			},
+			headers: c.req.raw.headers,
+		});
+	}
+
+	if (body.password) {
+		await auth.api.setUserPassword({
+			body: { userId, newPassword: body.password },
+			headers: c.req.raw.headers,
+		});
+	}
+
+	return c.json({ success: true });
+});
+
 // Delete user — prevents self-deletion and deleting the last admin
 app.delete("/users/:userId", async (c) => {
 	const { userId } = c.req.param();

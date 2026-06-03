@@ -12,6 +12,7 @@ export default [
 	index("routes/home.tsx"),
 	route("login", "routes/login.tsx"),
 	route("setup", "routes/setup.tsx"),
+	route("profile", "routes/profile.tsx"),
 	route("admin", "routes/admin.tsx", [
 		index("routes/admin-index.tsx"),
 		route("users/:userId", "routes/admin-user-detail.tsx"),

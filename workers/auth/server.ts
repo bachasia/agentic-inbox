@@ -14,7 +14,10 @@ export function createAuth(env: Env) {
 		secret: env.BETTER_AUTH_SECRET,
 		baseURL: env.BETTER_AUTH_URL || "http://localhost:8787",
 		trustedOrigins: [env.BETTER_AUTH_URL || "http://localhost:8787"],
-		emailAndPassword: { enabled: true },
+		emailAndPassword: {
+			enabled: true,
+			changeEmail: { enabled: true },
+		},
 		session: {
 			expiresIn: 60 * 60 * 24 * 7, // 7 days
 			updateAge: 60 * 60 * 24, // refresh daily

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import adminApi, { type CreateUserPayload } from "~/services/admin-api";
+import adminApi, { type CreateUserPayload, type UpdateCredentialsPayload } from "~/services/admin-api";
 
 export const adminQueryKeys = {
 	users: (search?: string) => ["admin", "users", search] as const,
@@ -42,6 +42,15 @@ export function useRemoveUser() {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (userId: string) => adminApi.removeUser(userId),
+		onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "users"] }),
+	});
+}
+
+export function useUpdateUserCredentials() {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: ({ userId, data }: { userId: string; data: UpdateCredentialsPayload }) =>
+			adminApi.updateUserCredentials(userId, data),
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "users"] }),
 	});
 }

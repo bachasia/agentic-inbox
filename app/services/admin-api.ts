@@ -16,6 +16,12 @@ export interface CreateUserPayload {
 	mailboxIds?: string[];
 }
 
+export interface UpdateCredentialsPayload {
+	name?: string;
+	email?: string;
+	password?: string;
+}
+
 async function req<T>(url: string, options: RequestInit = {}): Promise<T> {
 	const res = await fetch(url, {
 		...options,
@@ -49,6 +55,12 @@ const adminApi = {
 
 	removeUser: (userId: string) =>
 		req<void>(`/api/v1/admin/users/${userId}`, { method: "DELETE" }),
+
+	updateUserCredentials: (userId: string, data: UpdateCredentialsPayload) =>
+		req<{ success: boolean }>(`/api/v1/admin/users/${userId}/credentials`, {
+			method: "PUT",
+			body: JSON.stringify(data),
+		}),
 
 	getUserMailboxes: (userId: string) =>
 		req<{ mailboxIds: string[] }>(`/api/v1/admin/users/${userId}/mailboxes`),
