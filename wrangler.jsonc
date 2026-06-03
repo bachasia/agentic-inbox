@@ -9,11 +9,12 @@
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
+
+	// ─── Default (local dev only) ────────────────────────────────────────────────
+	// Run `npm run dev` without specifying an env.
+	// POLICY_AUD and TEAM_DOMAIN are not required in local dev.
 	"vars": {
-		// Production deploys must also define POLICY_AUD and TEAM_DOMAIN.
-		// TEAM_DOMAIN may be the base Access URL or the full /cdn-cgi/access/certs URL.
-		// The worker now fails closed outside local development if Access is not configured.
-		"DOMAINS": "bach.asia",
+		"DOMAINS": "localhost",
 		"EMAIL_ADDRESSES": []
 	},
 	"send_email": [
@@ -73,5 +74,87 @@
 				"EmailMCP"
 			]
 		}
-	]
+	],
+
+	// ─── Production environments ─────────────────────────────────────────────────
+	// Add one block per domain. Deploy with: wrangler deploy --env <name>
+	// Each env needs its own R2 bucket and Vectorize index (see docs/multi-domain-deploy.md).
+	// Set POLICY_AUD and TEAM_DOMAIN as Worker secrets after first deploy.
+	"env": {
+		"bach-asia": {
+			"name": "agentic-inbox-bach-asia",
+			"vars": {
+				"DOMAINS": "bach.asia",
+				"EMAIL_ADDRESSES": []
+			},
+			"send_email": [
+				{
+					"name": "EMAIL",
+					"remote": true
+				}
+			],
+			"r2_buckets": [
+				{
+					"binding": "BUCKET",
+					"bucket_name": "agentic-inbox-bach-asia",
+					"preview_bucket_name": "agentic-inbox-bach-asia"
+				}
+			],
+			"ai": {
+				"binding": "AI"
+			},
+			"vectorize": [
+				{
+					"binding": "VECTORIZE",
+					"index_name": "email-embeddings-bach-asia"
+				}
+			],
+			"durable_objects": {
+				"bindings": [
+					{
+						"name": "MAILBOX",
+						"class_name": "MailboxDO"
+					},
+					{
+						"name": "EMAIL_AGENT",
+						"class_name": "EmailAgent"
+					},
+					{
+						"name": "EMAIL_MCP",
+						"class_name": "EmailMCP"
+					}
+				]
+			},
+			"migrations": [
+				{
+					"tag": "v1",
+					"new_sqlite_classes": [
+						"MailboxDO"
+					]
+				},
+				{
+					"tag": "v2",
+					"new_sqlite_classes": [
+						"EmailAgent"
+					]
+				},
+				{
+					"tag": "v3",
+					"new_sqlite_classes": [
+						"EmailMCP"
+					]
+				}
+			]
+		}
+
+		// ── Add more domains below ──────────────────────────────────────────────
+		// Copy the block above, change the key name, "name", "DOMAINS",
+		// "bucket_name", and "index_name". Then follow docs/multi-domain-deploy.md.
+		//
+		// "example-com": {
+		//   "name": "agentic-inbox-example-com",
+		//   "vars": { "DOMAINS": "example.com", "EMAIL_ADDRESSES": [] },
+		//   ...
+		// }
+	}
 }

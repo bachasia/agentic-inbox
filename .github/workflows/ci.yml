@@ -10,6 +10,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# ── Add new domain slugs here (space-separated) to include in auto-deploy ─────
+env:
+  DEPLOY_ENVS: bach-asia
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -35,6 +39,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run deploy
+      - run: npm run build
+
+      - name: Deploy all environments
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          for env in $DEPLOY_ENVS; do
+            echo "→ Deploying env: $env"
+            npx wrangler deploy --env "$env"
+          done
