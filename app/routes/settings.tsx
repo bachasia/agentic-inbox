@@ -15,6 +15,7 @@ import DOMPurify from "dompurify";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 import RichTextEditor from "~/components/RichTextEditor";
+import WooCommerceSettingsSection from "~/components/settings/woocommerce-settings-section";
 import { useMailbox, useUpdateMailbox } from "~/queries/mailboxes";
 import { useLabels, useCreateLabel, useUpdateLabel, useDeleteLabel } from "~/queries/labels";
 import { useTemplates, useCreateTemplate, useUpdateTemplate, useDeleteTemplate } from "~/queries/templates";
@@ -23,6 +24,7 @@ import RuleBuilder from "~/components/RuleBuilder";
 import api from "~/services/api";
 import { htmlToPlainText } from "~/lib/utils";
 import { GearIcon } from "@phosphor-icons/react";
+import type { WooCommerceSettings } from "~/types";
 
 const PROMPT_PLACEHOLDER = `You are an email assistant that helps manage this inbox. You read emails, draft replies, and help organize conversations.\n\nWrite like a real person. Short, direct, flowing prose. Plain text only.\n\n(Leave empty to use the full built-in default prompt)`;
 
@@ -49,6 +51,11 @@ export default function SettingsRoute() {
 	// Signature state
 	const [signatureEnabled, setSignatureEnabled] = useState(false);
 	const [signatureHtml, setSignatureHtml] = useState("");
+
+	// WooCommerce state — managed inside WooCommerceSettingsSection, mirrored here for save
+	const [wooSettings, setWooSettings] = useState<WooCommerceSettings>({
+		enabled: false, storeUrl: "", consumerKey: "", consumerSecret: "",
+	});
 
 	// Proactive AI state
 	const [unansweredDays, setUnansweredDays] = useState(3);
@@ -99,6 +106,14 @@ export default function SettingsRoute() {
 			setUnansweredDays(mailbox.settings?.unansweredDays ?? 3);
 			setDigestEnabled(mailbox.settings?.digestEnabled ?? false);
 			setDigestTime(mailbox.settings?.digestTime ?? "08:00");
+
+			const woo = mailbox.settings?.woocommerce;
+			setWooSettings({
+				enabled: woo?.enabled ?? false,
+				storeUrl: woo?.storeUrl ?? "",
+				consumerKey: woo?.consumerKey ?? "",
+				consumerSecret: woo?.consumerSecret ?? "",
+			});
 		}
 	}, [mailbox]);
 
@@ -121,6 +136,7 @@ export default function SettingsRoute() {
 			unansweredDays,
 			digestEnabled,
 			digestTime,
+			woocommerce: wooSettings,
 		};
 		try {
 			await updateMailboxMutation.mutateAsync({ mailboxId, settings });
@@ -167,6 +183,7 @@ export default function SettingsRoute() {
 			setTestingDiscord(false);
 		}
 	};
+
 
 	if (!mailbox) {
 		return (
@@ -288,6 +305,13 @@ export default function SettingsRoute() {
 						</div>
 					</div>
 				</div>
+
+				{/* WooCommerce */}
+				<WooCommerceSettingsSection
+					mailboxId={mailboxId}
+					initialSettings={mailbox?.settings?.woocommerce}
+					onChange={setWooSettings}
+				/>
 
 				{/* Proactive AI */}
 				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
