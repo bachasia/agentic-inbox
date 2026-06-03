@@ -8,7 +8,7 @@ import PostalMime from "postal-mime";
 import { z } from "zod";
 import { sendEmail } from "./email-sender";
 import { storeAttachments, type StoredAttachment } from "./lib/attachments";
-import { notifyNewEmail, testNotification } from "./lib/notifications";
+import { notifyNewEmail, testNotification, getEffectiveNotifications } from "./lib/notifications";
 import {
 	validateSender,
 	SenderValidationError,
@@ -138,7 +138,7 @@ app.get("/api/v1/mailboxes", async (c) => {
 	return c.json(enriched);
 });
 
-app.post("/api/v1/mailboxes", requireAdmin, async (c) => {
+app.post("/api/v1/mailboxes", requireAuth, requireAdmin, async (c) => {
 	const { name, settings, email: rawEmail } = CreateMailboxBody.parse(await c.req.json());
 	const email = rawEmail.toLowerCase();
 	const allowedAddresses = (c.env.EMAIL_ADDRESSES ?? []) as string[];
@@ -189,7 +189,29 @@ app.put("/api/v1/mailboxes/:mailboxId", async (c) => {
 	return c.json({ id: mailboxId, name: mailboxId, email: mailboxId, settings });
 });
 
-app.delete("/api/v1/mailboxes/:mailboxId", requireAdmin, async (c) => {
+// -- Global settings ------------------------------------------------
+
+app.get("/api/v1/settings", requireAuth, requireAdmin, async (c) => {
+	const obj = await c.env.BUCKET.get("global-settings.json");
+	if (!obj) return c.json({});
+	return c.json(await obj.json());
+});
+
+app.put("/api/v1/settings", requireAuth, requireAdmin, async (c) => {
+	const body = await c.req.json();
+	await c.env.BUCKET.put("global-settings.json", JSON.stringify(body));
+	return c.json({ ok: true });
+});
+
+app.post("/api/v1/settings/test-notification", requireAuth, requireAdmin, async (c) => {
+	const { provider, settings } = await c.req.json() as {
+		provider: "telegram" | "discord";
+		settings: Record<string, string>;
+	};
+	return c.json(await testNotification(provider, settings));
+});
+
+app.delete("/api/v1/mailboxes/:mailboxId", requireAuth, requireAdmin, async (c) => {
 	const mailboxId = c.req.param("mailboxId")!;
 	const key = `mailboxes/${mailboxId}.json`;
 	if (!(await c.env.BUCKET.head(key))) return c.json({ error: "Not found" }, 404);
@@ -816,10 +838,11 @@ app.post("/api/v1/mailboxes/:mailboxId/test-notification", async (c: AppContext)
 	return c.json(result);
 });
 
-// -- Signature images -----------------------------------------------
+// -- Image uploads --------------------------------------------------
 
 const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/svg+xml", "image/webp"];
 const MAX_SIGNATURE_IMAGE_SIZE = 500 * 1024;
+const MAX_COMPOSE_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB for compose inline images
 
 app.post("/api/v1/mailboxes/:mailboxId/signature-image", async (c: AppContext) => {
 	const mailboxId = c.req.param("mailboxId")!;
@@ -840,6 +863,35 @@ app.get("/api/v1/mailboxes/:mailboxId/signature-image/:filename", async (c) => {
 	const mailboxId = c.req.param("mailboxId")!;
 	const filename = c.req.param("filename")!;
 	const obj = await c.env.BUCKET.get(`signatures/${mailboxId}/${filename}`);
+	if (!obj) return c.json({ error: "Not found" }, 404);
+	return new Response(obj.body, {
+		headers: {
+			"Content-Type": obj.httpMetadata?.contentType || "image/png",
+			"Cache-Control": "public, max-age=31536000",
+		},
+	});
+});
+
+// Compose inline image upload — stored separately from signature images
+app.post("/api/v1/mailboxes/:mailboxId/compose-image", async (c: AppContext) => {
+	const mailboxId = c.req.param("mailboxId")!;
+	const formData = await c.req.formData();
+	const file = formData.get("file") as File | null;
+	if (!file) return c.json({ error: "No file provided" }, 400);
+	if (!ALLOWED_IMAGE_TYPES.includes(file.type)) return c.json({ error: "Invalid file type" }, 400);
+	if (file.size > MAX_COMPOSE_IMAGE_SIZE) return c.json({ error: "File too large (max 5MB)" }, 400);
+	const filename = `${crypto.randomUUID()}-${file.name.replace(/[^\w.-]/g, "_")}`;
+	await c.env.BUCKET.put(`compose-images/${mailboxId}/${filename}`, file.stream(), {
+		httpMetadata: { contentType: file.type },
+	});
+	const url = `/api/v1/mailboxes/${mailboxId}/compose-image/${filename}`;
+	return c.json({ url, filename });
+});
+
+app.get("/api/v1/mailboxes/:mailboxId/compose-image/:filename", async (c) => {
+	const mailboxId = c.req.param("mailboxId")!;
+	const filename = c.req.param("filename")!;
+	const obj = await c.env.BUCKET.get(`compose-images/${mailboxId}/${filename}`);
 	if (!obj) return c.json({ error: "Not found" }, 404);
 	return new Response(obj.body, {
 		headers: {
@@ -992,12 +1044,14 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 	})());
 
 	ctx.waitUntil(
-		notifyNewEmail(mailboxSettings.notifications, {
-			sender: (parsedEmail.from?.address || "").toLowerCase(),
-			senderName: parsedEmail.from?.name || undefined,
-			subject: parsedEmail.subject || "(no subject)",
-			mailboxId,
-		}).catch((e: Error) => logger.error("notifications", "Notification failed", { error: e })),
+		getEffectiveNotifications(env.BUCKET, mailboxId)
+			.then((n) => notifyNewEmail(n, {
+				sender: (parsedEmail.from?.address || "").toLowerCase(),
+				senderName: parsedEmail.from?.name || undefined,
+				subject: parsedEmail.subject || "(no subject)",
+				mailboxId,
+			}))
+			.catch((e: Error) => logger.error("notifications", "Notification failed", { error: e })),
 	);
 
 	// Extract action items (fail-open: skip newsletters/notifications/spam)

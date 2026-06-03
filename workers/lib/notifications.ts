@@ -225,6 +225,42 @@ export async function sendDigestNotification(
 	await Promise.allSettled(tasks);
 }
 
+interface GlobalStoreConfig {
+	enabled: boolean;
+	topicId?: string;
+}
+
+export interface GlobalSettings {
+	notifications?: {
+		telegram?: { botToken: string; chatId: string; stores?: Record<string, GlobalStoreConfig> };
+		discord?: { webhookUrl: string; stores?: Record<string, GlobalStoreConfig> };
+	};
+}
+
+/** Resolve effective notification config by merging global credentials with per-store settings from R2. */
+export async function getEffectiveNotifications(
+	bucket: R2Bucket,
+	mailboxId: string,
+): Promise<NotificationsConfig | undefined> {
+	const obj = await bucket.get("global-settings.json");
+	if (!obj) return undefined;
+	const g = await obj.json<GlobalSettings>();
+	const tg = g.notifications?.telegram;
+	const dc = g.notifications?.discord;
+	return {
+		telegram: tg?.botToken && tg?.chatId ? {
+			enabled: tg.stores?.[mailboxId]?.enabled ?? false,
+			botToken: tg.botToken,
+			chatId: tg.chatId,
+			topicId: tg.stores?.[mailboxId]?.topicId ?? undefined,
+		} : undefined,
+		discord: dc?.webhookUrl ? {
+			enabled: dc.stores?.[mailboxId]?.enabled ?? false,
+			webhookUrl: dc.webhookUrl,
+		} : undefined,
+	};
+}
+
 /** Test a notification provider using settings provided directly (not from R2). */
 export async function testNotification(
 	provider: "telegram" | "discord",

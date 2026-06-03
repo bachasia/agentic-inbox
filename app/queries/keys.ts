@@ -51,4 +51,5 @@ export const queryKeys = {
 		list: (mailboxId: string, email: string) =>
 			["mailboxes", mailboxId, "woocommerce-orders", email] as const,
 	},
+	globalSettings: ["globalSettings"] as const,
 };

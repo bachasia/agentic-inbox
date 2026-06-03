@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import type { Email, Folder, Mailbox, Label, Contact, EmailTemplate, ActionItem, ContactIntelligence, AutomationRule, RuleCondition, RuleAction, WooCommerceOrder } from "~/types";
+import type { Email, Folder, Mailbox, Label, Contact, EmailTemplate, ActionItem, ContactIntelligence, AutomationRule, RuleCondition, RuleAction, WooCommerceOrder, GlobalSettings } from "~/types";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -154,7 +154,7 @@ const api = {
 	forwardEmail: (mailboxId: string, emailId: string, email: unknown) =>
 		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/forward`, email),
 
-	// Signature images
+	// Signature images (used in mailbox settings signature editor)
 	uploadSignatureImage: async (mailboxId: string, file: File): Promise<{ url: string; filename: string }> => {
 		const formData = new FormData();
 		formData.append("file", file);
@@ -167,9 +167,29 @@ const api = {
 		return res.json();
 	},
 
+	// Compose inline images (stored separately from signature images)
+	uploadComposeImage: async (mailboxId: string, file: File): Promise<{ url: string; filename: string }> => {
+		const formData = new FormData();
+		formData.append("file", file);
+		const res = await fetch(`/api/v1/mailboxes/${mailboxId}/compose-image`, { method: "POST", body: formData });
+		if (!res.ok) {
+			const body = await res.json().catch(() => ({}));
+			throw new ApiError(res.status, body as Record<string, unknown>);
+		}
+		return res.json();
+	},
+
 	// Notifications
 	testNotification: (mailboxId: string, provider: string, settings: Record<string, string>) =>
 		post<{ success: boolean; error?: string }>(`/api/v1/mailboxes/${mailboxId}/test-notification`, { provider, settings }),
+
+	// Global settings
+	getGlobalSettings: () =>
+		get<GlobalSettings>("/api/v1/settings"),
+	updateGlobalSettings: (settings: GlobalSettings) =>
+		put<GlobalSettings>("/api/v1/settings", settings),
+	testGlobalNotification: (provider: "telegram" | "discord", settings: Record<string, string>) =>
+		post<{ success: boolean; error?: string }>("/api/v1/settings/test-notification", { provider, settings }),
 
 	// Folders
 	listFolders: (mailboxId: string) =>

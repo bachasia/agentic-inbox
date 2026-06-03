@@ -5,7 +5,6 @@
 import { Badge, Button, Input, Loader, useKumoToastManager } from "@cloudflare/kumo";
 import {
 	ArrowCounterClockwiseIcon,
-	BellIcon,
 	PencilSimpleIcon,
 	RobotIcon,
 	TagIcon,
@@ -21,7 +20,6 @@ import { useLabels, useCreateLabel, useUpdateLabel, useDeleteLabel } from "~/que
 import { useTemplates, useCreateTemplate, useUpdateTemplate, useDeleteTemplate } from "~/queries/templates";
 import { useRules, useCreateRule, useUpdateRule, useDeleteRule } from "~/queries/rules-query";
 import RuleBuilder from "~/components/RuleBuilder";
-import api from "~/services/api";
 import { htmlToPlainText } from "~/lib/utils";
 import { GearIcon } from "@phosphor-icons/react";
 import type { WooCommerceSettings } from "~/types";
@@ -37,16 +35,6 @@ export default function SettingsRoute() {
 	const [displayName, setDisplayName] = useState("");
 	const [agentPrompt, setAgentPrompt] = useState("");
 	const [isSaving, setIsSaving] = useState(false);
-
-	// Notification state
-	const [telegramEnabled, setTelegramEnabled] = useState(false);
-	const [telegramBotToken, setTelegramBotToken] = useState("");
-	const [telegramChatId, setTelegramChatId] = useState("");
-	const [telegramTopicId, setTelegramTopicId] = useState("");
-	const [discordEnabled, setDiscordEnabled] = useState(false);
-	const [discordWebhookUrl, setDiscordWebhookUrl] = useState("");
-	const [testingTelegram, setTestingTelegram] = useState(false);
-	const [testingDiscord, setTestingDiscord] = useState(false);
 
 	// Signature state
 	const [signatureEnabled, setSignatureEnabled] = useState(false);
@@ -91,14 +79,6 @@ export default function SettingsRoute() {
 			setDisplayName(mailbox.settings?.fromName || mailbox.name || "");
 			setAgentPrompt(mailbox.settings?.agentSystemPrompt || "");
 
-			const n = mailbox.settings?.notifications;
-			setTelegramEnabled(n?.telegram?.enabled ?? false);
-			setTelegramBotToken(n?.telegram?.botToken ?? "");
-			setTelegramChatId(n?.telegram?.chatId ?? "");
-			setTelegramTopicId(n?.telegram?.topicId ?? "");
-			setDiscordEnabled(n?.discord?.enabled ?? false);
-			setDiscordWebhookUrl(n?.discord?.webhookUrl ?? "");
-
 			const sig = mailbox.settings?.signature;
 			setSignatureEnabled(sig?.enabled ?? false);
 			setSignatureHtml(sig?.html ?? sig?.text ?? "");
@@ -124,10 +104,6 @@ export default function SettingsRoute() {
 			...mailbox.settings,
 			fromName: displayName,
 			agentSystemPrompt: agentPrompt.trim() || undefined,
-			notifications: {
-				telegram: { enabled: telegramEnabled, botToken: telegramBotToken, chatId: telegramChatId, topicId: telegramTopicId || undefined },
-				discord: { enabled: discordEnabled, webhookUrl: discordWebhookUrl },
-			},
 			signature: {
 				enabled: signatureEnabled,
 				html: signatureHtml,
@@ -149,41 +125,6 @@ export default function SettingsRoute() {
 	};
 
 	const handleResetPrompt = () => setAgentPrompt("");
-
-	const handleTestTelegram = async () => {
-		if (!mailboxId) return;
-		setTestingTelegram(true);
-		try {
-			const result = await api.testNotification(mailboxId, "telegram", { botToken: telegramBotToken, chatId: telegramChatId, ...(telegramTopicId ? { topicId: telegramTopicId } : {}) });
-			if (result.success) {
-				toastManager.add({ title: "Telegram test sent successfully!" });
-			} else {
-				toastManager.add({ title: `Telegram test failed: ${result.error}`, variant: "error" });
-			}
-		} catch {
-			toastManager.add({ title: "Telegram test request failed", variant: "error" });
-		} finally {
-			setTestingTelegram(false);
-		}
-	};
-
-	const handleTestDiscord = async () => {
-		if (!mailboxId) return;
-		setTestingDiscord(true);
-		try {
-			const result = await api.testNotification(mailboxId, "discord", { webhookUrl: discordWebhookUrl });
-			if (result.success) {
-				toastManager.add({ title: "Discord test sent successfully!" });
-			} else {
-				toastManager.add({ title: `Discord test failed: ${result.error}`, variant: "error" });
-			}
-		} catch {
-			toastManager.add({ title: "Discord test request failed", variant: "error" });
-		} finally {
-			setTestingDiscord(false);
-		}
-	};
-
 
 	if (!mailbox) {
 		return (
@@ -210,99 +151,6 @@ export default function SettingsRoute() {
 							onChange={(e) => setDisplayName(e.target.value)}
 						/>
 						<Input label="Email" type="email" value={mailbox.email} disabled />
-					</div>
-				</div>
-
-				{/* Notifications */}
-				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
-					<div className="flex items-center gap-2 mb-4">
-						<BellIcon size={16} weight="duotone" className="text-kumo-subtle" />
-						<span className="text-sm font-medium text-kumo-default">Notifications</span>
-					</div>
-					<p className="text-xs text-kumo-subtle mb-4">
-						Get notified when new emails arrive. Configure one or both providers.
-					</p>
-
-					{/* Telegram */}
-					<div className="rounded-lg border border-kumo-line p-4 mb-3">
-						<div className="flex items-center justify-between mb-3">
-							<span className="text-sm font-medium text-kumo-default">Telegram</span>
-							<label className="flex items-center gap-2 cursor-pointer">
-								<input
-									type="checkbox"
-									checked={telegramEnabled}
-									onChange={(e) => setTelegramEnabled(e.target.checked)}
-									className="w-4 h-4 accent-blue-500"
-								/>
-								<span className="text-xs text-kumo-subtle">Enabled</span>
-							</label>
-						</div>
-						<div className="space-y-2">
-							<Input
-								label="Bot Token"
-								type="password"
-								value={telegramBotToken}
-								onChange={(e) => setTelegramBotToken(e.target.value)}
-								placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
-							/>
-							<Input
-								label="Chat ID"
-								value={telegramChatId}
-								onChange={(e) => setTelegramChatId(e.target.value)}
-								placeholder="-100123456789"
-							/>
-							<Input
-								label="Topic ID (optional)"
-								value={telegramTopicId}
-								onChange={(e) => setTelegramTopicId(e.target.value)}
-								placeholder="123"
-							/>
-						</div>
-						<div className="mt-3">
-							<Button
-								variant="secondary"
-								size="sm"
-								onClick={handleTestTelegram}
-								loading={testingTelegram}
-								disabled={!telegramBotToken || !telegramChatId}
-							>
-								Send Test
-							</Button>
-						</div>
-					</div>
-
-					{/* Discord */}
-					<div className="rounded-lg border border-kumo-line p-4">
-						<div className="flex items-center justify-between mb-3">
-							<span className="text-sm font-medium text-kumo-default">Discord</span>
-							<label className="flex items-center gap-2 cursor-pointer">
-								<input
-									type="checkbox"
-									checked={discordEnabled}
-									onChange={(e) => setDiscordEnabled(e.target.checked)}
-									className="w-4 h-4 accent-blue-500"
-								/>
-								<span className="text-xs text-kumo-subtle">Enabled</span>
-							</label>
-						</div>
-						<Input
-							label="Webhook URL"
-							type="url"
-							value={discordWebhookUrl}
-							onChange={(e) => setDiscordWebhookUrl(e.target.value)}
-							placeholder="https://discord.com/api/webhooks/..."
-						/>
-						<div className="mt-3">
-							<Button
-								variant="secondary"
-								size="sm"
-								onClick={handleTestDiscord}
-								loading={testingDiscord}
-								disabled={!discordWebhookUrl}
-							>
-								Send Test
-							</Button>
-						</div>
 					</div>
 				</div>
 

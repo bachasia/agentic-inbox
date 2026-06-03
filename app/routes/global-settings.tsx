@@ -6,6 +6,7 @@ import { useMailboxes } from "~/queries/mailboxes";
 import HomeSidebar from "~/components/home/home-sidebar";
 import HomeTopBar from "~/components/home/home-top-bar";
 import ThemeToggleButton from "~/components/theme-toggle-button";
+import NotificationsGlobalSection from "~/components/notifications-global-section";
 
 export function meta() {
 	return [{ title: "Settings — Agentic Inbox" }];
@@ -43,17 +44,25 @@ export default function GlobalSettingsRoute() {
 					pageTitle="Settings"
 				/>
 
-				<div className="px-6 lg:px-10 pt-8 pb-6">
-					<h1 className="text-3xl font-semibold tracking-tight text-kumo-default">Settings</h1>
-					<p className="mt-1.5 text-sm text-kumo-subtle">App preferences and account settings.</p>
+				<div className="px-6 lg:px-10 pt-8 pb-6 flex items-end justify-between gap-6 flex-wrap">
+					<div>
+						<h1 className="text-3xl font-semibold tracking-tight text-kumo-default">Settings</h1>
+						<p className="mt-1.5 text-sm text-kumo-subtle">App preferences and account settings.</p>
+					</div>
 				</div>
 
 				<div className="px-6 lg:px-10 pb-16 space-y-6 max-w-2xl">
 					{/* Appearance */}
 					<section className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
-						<div className="px-5 py-4 border-b border-kumo-line">
-							<h2 className="text-sm font-semibold text-kumo-default">Appearance</h2>
-							<p className="text-xs text-kumo-subtle mt-0.5">Customize the look of the app.</p>
+						<div className="px-5 py-4 border-b border-kumo-line flex items-center gap-3">
+							<div
+								className="w-1 h-5 rounded-full shrink-0"
+								style={{ background: "var(--home-indigo)" }}
+							/>
+							<div>
+								<h2 className="text-sm font-semibold text-kumo-default">Appearance</h2>
+								<p className="text-xs text-kumo-subtle mt-0.5">Customize the look of the app.</p>
+							</div>
 						</div>
 						<div className="px-5 py-4 flex items-center justify-between">
 							<div>
@@ -66,21 +75,27 @@ export default function GlobalSettingsRoute() {
 
 					{/* Account */}
 					<section className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
-						<div className="px-5 py-4 border-b border-kumo-line">
-							<h2 className="text-sm font-semibold text-kumo-default">Account</h2>
-							<p className="text-xs text-kumo-subtle mt-0.5">Manage your profile and credentials.</p>
+						<div className="px-5 py-4 border-b border-kumo-line flex items-center gap-3">
+							<div
+								className="w-1 h-5 rounded-full shrink-0"
+								style={{ background: "var(--home-indigo)" }}
+							/>
+							<div>
+								<h2 className="text-sm font-semibold text-kumo-default">Account</h2>
+								<p className="text-xs text-kumo-subtle mt-0.5">Manage your profile and credentials.</p>
+							</div>
 						</div>
 						<div className="px-5 py-4 flex items-center justify-between gap-4">
 							<div className="flex items-center gap-3 min-w-0">
 								<div
-									className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0"
+									className="w-10 h-10 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0 shadow-sm"
 									style={{ background: "linear-gradient(135deg, var(--home-indigo), #a855f7)" }}
 								>
 									{displayName.slice(0, 2).toUpperCase()}
 								</div>
 								<div className="min-w-0">
-									<div className="text-sm font-medium text-kumo-default truncate">{displayName}</div>
-									<div className="text-xs text-kumo-subtle truncate">{session?.user?.email ?? ""}</div>
+									<div className="text-sm font-semibold text-kumo-default truncate">{displayName}</div>
+									<div className="text-xs text-kumo-subtle font-mono truncate">{session?.user?.email ?? ""}</div>
 								</div>
 							</div>
 							<Button
@@ -93,6 +108,11 @@ export default function GlobalSettingsRoute() {
 							</Button>
 						</div>
 					</section>
+
+					{/* Notifications — admin only */}
+					{session?.user?.role === "admin" && (
+						<NotificationsGlobalSection mailboxes={mailboxes} />
+					)}
 				</div>
 			</main>
 		</div>

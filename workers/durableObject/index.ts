@@ -11,7 +11,7 @@ import { Folders } from "../../shared/folders";
 import type { Env } from "../types";
 import { applyMigrations, mailboxMigrations } from "./migrations";
 import { sendEmail } from "../email-sender";
-import { sendReminderNotification, sendDigestNotification, notifyNewEmail } from "../lib/notifications";
+import { sendReminderNotification, sendDigestNotification, notifyNewEmail, getEffectiveNotifications } from "../lib/notifications";
 import { synthesizeDigest } from "../lib/ai";
 import { evaluateAllRules, isValidWebhookUrl } from "../lib/rules-engine";
 
@@ -1060,7 +1060,8 @@ export class MailboxDO extends DurableObject<Env> {
 		const settings = settingsObj ? await settingsObj.json() as Record<string, any> : {};
 		const daysSent = Math.floor((Date.now() - new Date(email.created_at).getTime()) / 86400_000);
 
-		await sendReminderNotification(settings.notifications, {
+		const reminderNotif = await getEffectiveNotifications(this.env.BUCKET, mailboxId);
+		await sendReminderNotification(reminderNotif, {
 			subject: email.subject || "(no subject)",
 			recipient: email.recipient || "",
 			daysSent,
@@ -1077,7 +1078,8 @@ export class MailboxDO extends DurableObject<Env> {
 
 		const data = await this.#compileDailyDigest(unansweredDays);
 		const summary = await synthesizeDigest(this.env.AI, data).catch(() => "");
-		await sendDigestNotification(settings.notifications, data, summary);
+		const digestNotif = await getEffectiveNotifications(this.env.BUCKET, mailboxId);
+		await sendDigestNotification(digestNotif, data, summary);
 
 		await this.ctx.storage.put("lastDigestAt", new Date().toISOString());
 
@@ -1639,15 +1641,12 @@ export class MailboxDO extends DurableObject<Env> {
 						await this.updateEmail(emailId, { read: true });
 						break;
 					case "notify": {
-						const settingsObj = await env.BUCKET.get(`mailboxes/${mailboxId}.json`);
-						if (settingsObj) {
-							const settings = await settingsObj.json() as Record<string, any>;
-							await notifyNewEmail(settings.notifications, {
-								sender: emailRow.sender ?? "",
-								subject: `[Rule: ${action.params?.message ?? ""}] ${emailRow.subject ?? ""}`,
-								mailboxId,
-							});
-						}
+						const ruleNotif = await getEffectiveNotifications(env.BUCKET, mailboxId);
+						await notifyNewEmail(ruleNotif, {
+							sender: emailRow.sender ?? "",
+							subject: `[Rule: ${action.params?.message ?? ""}] ${emailRow.subject ?? ""}`,
+							mailboxId,
+						});
 						break;
 					}
 					case "webhook":

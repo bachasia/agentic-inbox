@@ -25,6 +25,27 @@ export interface NotificationSettings {
 	discord?: DiscordSettings;
 }
 
+export interface GlobalStoreNotifConfig {
+	enabled: boolean;
+	topicId?: string;
+}
+
+export interface GlobalNotificationSettings {
+	telegram?: {
+		botToken: string;
+		chatId: string;
+		stores?: Record<string, GlobalStoreNotifConfig>;
+	};
+	discord?: {
+		webhookUrl: string;
+		stores?: Record<string, GlobalStoreNotifConfig>;
+	};
+}
+
+export interface GlobalSettings {
+	notifications?: GlobalNotificationSettings;
+}
+
 export interface Label {
 	id: string;
 	name: string;
