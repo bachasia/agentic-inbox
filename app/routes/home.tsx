@@ -14,7 +14,7 @@ import {
 } from "@cloudflare/kumo";
 import { EnvelopeIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router";
 import api from "~/services/api";
 import {
@@ -139,6 +139,17 @@ export default function HomeRoute() {
 
 	const isLoading = !configData;
 
+	const groupedByDomain = useMemo(() => {
+		const groups: Record<string, typeof accounts> = {};
+		for (const account of accounts) {
+			const domain = account.email.split("@")[1] || "unknown";
+			(groups[domain] ??= []).push(account);
+		}
+		return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+	}, [accounts]);
+
+	const hasMultipleDomains = groupedByDomain.length > 1;
+
 	return (
 		<div className="min-h-screen bg-kumo-recessed">
 			<div className="mx-auto max-w-2xl px-4 py-8 md:px-6 md:py-16">
@@ -167,45 +178,59 @@ export default function HomeRoute() {
 						<Loader size="lg" />
 					</div>
 				) : accounts.length > 0 ? (
-					<div className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
-						{accounts.map((account, idx) => (
-							<RouterLink
-								key={account.id}
-								to={`/mailbox/${account.id}`}
-								className={`group flex items-center gap-4 px-5 py-4 no-underline transition-colors hover:bg-kumo-tint ${
-									idx > 0 ? "border-t border-kumo-line" : ""
-								}`}
-							>
-								<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-kumo-fill text-sm font-bold text-kumo-default">
-									{account.name.charAt(0).toUpperCase()}
-								</div>
-								<div className="min-w-0 flex-1">
-									<div className="text-sm font-medium text-kumo-default truncate">
-										{account.name}
+					<div className="space-y-4">
+						{groupedByDomain.map(([domain, domainAccounts]) => (
+							<div key={domain}>
+								{hasMultipleDomains && (
+									<div className="flex items-center gap-2 px-1 mb-2">
+										<span className="text-xs uppercase tracking-wider font-semibold text-kumo-subtle">
+											{domain}
+										</span>
+										<div className="flex-1 border-t border-kumo-line" />
 									</div>
-									<div className="text-sm text-kumo-subtle">
-										{account.email}
-									</div>
-								</div>
-								{!isConfigured && (
-									<Button
-										variant="ghost"
-										size="sm"
-										shape="square"
-										icon={<TrashIcon size={16} />}
-										aria-label={`Delete mailbox ${account.email}`}
-										onClick={(e) => {
-											e.preventDefault();
-											e.stopPropagation();
-											setMailboxToDelete({
-												id: account.id,
-												email: account.email,
-											});
-											setIsDeleteOpen(true);
-										}}
-									/>
 								)}
-							</RouterLink>
+								<div className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
+									{domainAccounts.map((account, idx) => (
+										<RouterLink
+											key={account.id}
+											to={`/mailbox/${account.id}`}
+											className={`group flex items-center gap-4 px-5 py-4 no-underline transition-colors hover:bg-kumo-tint ${
+												idx > 0 ? "border-t border-kumo-line" : ""
+											}`}
+										>
+											<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-kumo-fill text-sm font-bold text-kumo-default">
+												{account.name.charAt(0).toUpperCase()}
+											</div>
+											<div className="min-w-0 flex-1">
+												<div className="text-sm font-medium text-kumo-default truncate">
+													{account.name}
+												</div>
+												<div className="text-sm text-kumo-subtle">
+													{account.email}
+												</div>
+											</div>
+											{!isConfigured && (
+												<Button
+													variant="ghost"
+													size="sm"
+													shape="square"
+													icon={<TrashIcon size={16} />}
+													aria-label={`Delete mailbox ${account.email}`}
+													onClick={(e) => {
+														e.preventDefault();
+														e.stopPropagation();
+														setMailboxToDelete({
+															id: account.id,
+															email: account.email,
+														});
+														setIsDeleteOpen(true);
+													}}
+												/>
+											)}
+										</RouterLink>
+									))}
+								</div>
+							</div>
 						))}
 					</div>
 				) : (
