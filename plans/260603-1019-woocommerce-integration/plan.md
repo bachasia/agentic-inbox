@@ -1,7 +1,7 @@
 ---
 title: "WooCommerce Integration — Customer Orders in Inbox"
 description: "Display WooCommerce orders for the customer email being supported. Per-mailbox config, cached in DO SQLite (15-min TTL), shown in ContactIntelligence + EmailPanel, with AI agent tool."
-status: pending
+status: completed
 priority: P1
 branch: "main"
 tags: [woocommerce, orders, integration, ecommerce, support]
@@ -34,12 +34,12 @@ Frontend → GET /api/v1/mailboxes/:id/woocommerce/orders?email=X → Hono API
 
 | Phase | Name | Status | Effort | Priority |
 |-------|------|--------|--------|----------|
-| 1 | [Types and WooCommerce API Client](./phase-01-types-and-woocommerce-api-client.md) | Pending | 2h | P1 |
-| 2 | [Backend Cache and API Route](./phase-02-backend-cache-and-api-route.md) | Pending | 3h | P1 |
-| 3 | [AI Agent Tool](./phase-03-ai-agent-tool.md) | Pending | 1h | P2 |
-| 4 | [Settings UI](./phase-04-settings-ui.md) | Pending | 2h | P1 |
-| 5 | [Orders Panel and Frontend Integration](./phase-05-orders-panel-and-frontend-integration.md) | Pending | 3h | P1 |
-| 6 | [Testing and Polish](./phase-06-testing-and-polish.md) | Pending | 2h | P2 |
+| 1 | [Types and WooCommerce API Client](./phase-01-types-and-woocommerce-api-client.md) | Completed | 2h | P1 |
+| 2 | [Backend Cache and API Route](./phase-02-backend-cache-and-api-route.md) | Completed | 3h | P1 |
+| 3 | [AI Agent Tool](./phase-03-ai-agent-tool.md) | Completed | 1h | P2 |
+| 4 | [Settings UI](./phase-04-settings-ui.md) | Completed | 2h | P1 |
+| 5 | [Orders Panel and Frontend Integration](./phase-05-orders-panel-and-frontend-integration.md) | Completed | 3h | P1 |
+| 6 | [Testing and Polish](./phase-06-testing-and-polish.md) | Completed | 2h | P2 |
 
 **Total estimated effort:** ~13h
 

@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: "Types and WooCommerce API Client"
-status: pending
+status: completed
 priority: P1
 effort: "2h"
 dependencies: []
