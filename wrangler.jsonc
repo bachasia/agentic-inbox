@@ -81,7 +81,7 @@
 	"env": {
 		// ─── Single-worker multi-domain (Pattern B) ──────────────────────────────
 		"production": {
-			"name": "dtc-inbox-production",
+			"name": "dtc-inbox",
 			"vars": {
 				"DOMAINS": "kozmozracing.com,ezcustomcar.com,littleowh.com,aloprints.com",
 				"EMAIL_ADDRESSES": []
