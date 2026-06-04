@@ -105,12 +105,6 @@ app.use("/api/v1/*", requireAuth);
 // Mount the API routes
 app.route("/", apiApp);
 
-// Static assets have content-hashed filenames — safe to cache in browser forever
-app.use("/assets/*", async (c, next) => {
-	await next();
-	c.res.headers.set("Cache-Control", "public, max-age=31536000, immutable");
-});
-
 // React Router catch-all: serves the SPA for all non-API routes
 app.all("*", (c) => {
 	return requestHandler(c.req.raw, {
