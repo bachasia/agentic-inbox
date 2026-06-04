@@ -134,6 +134,13 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 		}
 	}, [session, isPending, location.pathname, navigate]);
 
+	// Fallback: redirect to login if session check doesn't resolve in 5s
+	useEffect(() => {
+		if (!isPending || PUBLIC_ROUTES.has(location.pathname)) return;
+		const t = setTimeout(() => navigate("/login", { replace: true }), 5000);
+		return () => clearTimeout(t);
+	}, [isPending, location.pathname, navigate]);
+
 	if (isPending) {
 		return (
 			<div className="flex items-center justify-center h-screen">
