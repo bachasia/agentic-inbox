@@ -1750,17 +1750,17 @@ export class MailboxDO extends DurableObject<Env> {
 
 	// ── WooCommerce order cache ────────────────────────────────────────
 
-	async getWooOrders(email: string): Promise<unknown[]> {
+	async getWooOrders(email: string, force = false): Promise<unknown[]> {
 		const key = email.toLowerCase();
 		const FIFTEEN_MIN_MS = 900_000;
 
-		// Check cache
+		// Check cache (skip if force-refresh requested)
 		const rows = [...this.ctx.storage.sql.exec(
 			`SELECT data, fetched_at FROM woo_orders_cache WHERE email = ?`, key,
 		)] as Array<{ data: string; fetched_at: number }>;
 		const cached = rows[0];
 
-		if (cached && Date.now() - cached.fetched_at < FIFTEEN_MIN_MS) {
+		if (!force && cached && Date.now() - cached.fetched_at < FIFTEEN_MIN_MS) {
 			return JSON.parse(cached.data) as unknown[];
 		}
 

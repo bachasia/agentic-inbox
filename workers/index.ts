@@ -784,7 +784,8 @@ app.delete("/api/v1/mailboxes/:mailboxId/rules/:ruleId", async (c: AppContext) =
 app.get("/api/v1/mailboxes/:mailboxId/woocommerce/orders", async (c: AppContext) => {
 	const email = c.req.query("email");
 	if (!email) return c.json({ error: "email query param required" }, 400);
-	const orders = await (c.var.mailboxStub as any).getWooOrders(email.toLowerCase());
+	const force = c.req.query("refresh") === "1";
+	const orders = await (c.var.mailboxStub as any).getWooOrders(email.toLowerCase(), force);
 	return c.json({ orders });
 });
 

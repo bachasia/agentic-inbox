@@ -59,30 +59,45 @@ export async function fetchCustomerOrders(
 	const base = config.storeUrl.replace(/\/$/, "");
 	const auth = authHeader(config);
 	const headers = { Authorization: auth, "Content-Type": "application/json" };
-	const signal = AbortSignal.timeout(10_000);
 
-	// Try customer_email param first (WooCommerce 3.5+)
-	const primaryUrl = `${base}/wp-json/wc/v3/orders?customer_email=${encodeURIComponent(email)}&per_page=${limit}&orderby=date&order=desc`;
-	let res = await fetch(primaryUrl, { headers, signal });
+	// Step 1: resolve registered customer ID by email (most reliable filter)
+	const customerId = await resolveCustomerId(base, headers, email);
 
-	if (!res.ok && res.status !== 404) {
-		const body = await res.json().catch(() => ({})) as any;
-		throw new Error(body?.message ?? `WooCommerce API error: ${res.status}`);
-	}
-
-	let orders: unknown[] = res.ok ? (await res.json() as unknown[]) : [];
-
-	// Fallback to search param if primary returns empty
-	if (orders.length === 0) {
-		const fallbackUrl = `${base}/wp-json/wc/v3/orders?search=${encodeURIComponent(email)}&per_page=${limit}&orderby=date&order=desc`;
-		const fallbackSignal = AbortSignal.timeout(10_000);
-		res = await fetch(fallbackUrl, { headers, signal: fallbackSignal });
+	// Step 2: fetch orders filtered server-side
+	let orders: unknown[] = [];
+	if (customerId !== null) {
+		// Filter by customer ID — guaranteed accurate
+		const url = `${base}/wp-json/wc/v3/orders?customer=${customerId}&per_page=${limit}&orderby=date&order=desc`;
+		const res = await fetch(url, { headers, signal: AbortSignal.timeout(10_000) });
+		if (!res.ok) {
+			const body = await res.json().catch(() => ({})) as any;
+			throw new Error(body?.message ?? `WooCommerce API error: ${res.status}`);
+		}
+		orders = await res.json() as unknown[];
+	} else {
+		// Guest checkout: use customer_email param and validate billing.email server-side
+		const url = `${base}/wp-json/wc/v3/orders?customer_email=${encodeURIComponent(email)}&per_page=${limit}&orderby=date&order=desc`;
+		const res = await fetch(url, { headers, signal: AbortSignal.timeout(10_000) });
 		if (res.ok) {
-			orders = await res.json() as unknown[];
+			const raw = await res.json() as unknown[];
+			// Only keep orders whose billing.email matches — guards against APIs that ignore the filter
+			orders = (raw as any[]).filter(o => (o.billing?.email ?? "").toLowerCase() === email.toLowerCase());
 		}
 	}
 
 	return (orders as any[]).map(parseOrder);
+}
+
+async function resolveCustomerId(base: string, headers: Record<string, string>, email: string): Promise<number | null> {
+	try {
+		const url = `${base}/wp-json/wc/v3/customers?email=${encodeURIComponent(email)}&per_page=1`;
+		const res = await fetch(url, { headers, signal: AbortSignal.timeout(8_000) });
+		if (!res.ok) return null;
+		const customers = await res.json() as any[];
+		return customers[0]?.id ?? null;
+	} catch {
+		return null;
+	}
 }
 
 export async function testWooCommerceConnection(
