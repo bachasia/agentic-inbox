@@ -3,7 +3,6 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { Badge, Button, Dialog, Input, Tooltip } from "@cloudflare/kumo";
-import { getAvatarGradient } from "~/lib/utils";
 import {
 	ArchiveIcon,
 	CaretLeftIcon,
@@ -130,30 +129,27 @@ export default function Sidebar() {
 
 	return (
 		<aside className="h-full w-64 bg-kumo-recessed flex flex-col shrink-0 border-r border-kumo-line">
-			{/* Account header */}
-			<div className="p-3 border-b border-kumo-line">
+			{/* Back + identity */}
+			<div className="px-4 pt-4 pb-1">
 				<button
 					type="button"
 					onClick={() => {
 						navigate("/");
 						closeSidebar();
 					}}
-					className="w-full flex items-center gap-2.5 p-2 rounded-lg hover:bg-kumo-tint transition-colors text-left"
+					className="flex items-center gap-1.5 text-kumo-subtle text-sm hover:text-kumo-default transition-colors mb-2.5 cursor-pointer bg-transparent border-0 p-0"
 				>
-					<div
-						className="size-8 rounded-lg text-xs text-white font-semibold flex items-center justify-center shrink-0 select-none"
-						style={{ background: getAvatarGradient(displayName) }}
-					>
-						{displayName[0]?.toUpperCase() ?? "M"}
-					</div>
-					<div className="min-w-0 flex-1">
-						<div className="text-[10px] text-kumo-subtle uppercase tracking-wider">Mailbox</div>
-						<div className="text-xs font-mono truncate text-kumo-default">
-							{currentMailbox?.email || mailboxId}
-						</div>
-					</div>
-					<CaretLeftIcon size={13} className="text-kumo-subtle shrink-0" />
+					<CaretLeftIcon size={14} />
+					<span>Mailboxes</span>
 				</button>
+				<div className="px-1">
+					<div className="text-base font-semibold text-kumo-default truncate">
+						{displayName}
+					</div>
+					<div className="text-sm text-kumo-subtle truncate mt-0.5">
+						{currentMailbox?.email || mailboxId}
+					</div>
+				</div>
 			</div>
 
 			{/* Compose */}

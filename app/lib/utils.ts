@@ -196,16 +196,6 @@ export function rewriteInlineImages(
 	return result;
 }
 
-/** Generate a consistent hue-based gradient for a sender avatar from their name. */
-export function getAvatarGradient(name: string): string {
-	let hash = 0;
-	for (let i = 0; i < name.length; i++) {
-		hash = name.charCodeAt(i) + ((hash << 5) - hash);
-	}
-	const hue = Math.abs(hash) % 360;
-	return `linear-gradient(135deg, hsl(${hue}, 60%, 55%), hsl(${(hue + 30) % 360}, 65%, 42%))`;
-}
-
 export function getNonInlineAttachments(attachments?: Attachment[]): Attachment[] {
 	return attachments?.filter((attachment) => attachment.disposition !== "inline") ?? [];
 }
