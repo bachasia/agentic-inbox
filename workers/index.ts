@@ -96,9 +96,21 @@ app.use("/api/v1/mailboxes/:mailboxId/*", requireMailbox);
 
 // -- Config ---------------------------------------------------------
 
-app.get("/api/v1/config", (c) => {
-	const domainsRaw = c.env.DOMAINS || "";
-	const domains = domainsRaw.split(",").map((d) => d.trim()).filter(Boolean);
+app.get("/api/v1/config", requireAuth, async (c) => {
+	const envDomains = (c.env.DOMAINS || "")
+		.split(",").map((d) => d.trim()).filter(Boolean)
+		.map((domain) => ({ domain, source: "env" as const }));
+
+	const d1Rows = await c.env.AUTH_DB
+		.prepare("SELECT domain FROM custom_domains ORDER BY created_at ASC")
+		.all<{ domain: string }>();
+
+	const envSet = new Set(envDomains.map((d) => d.domain));
+	const customDomains = d1Rows.results
+		.filter((r) => !envSet.has(r.domain))
+		.map((r) => ({ domain: r.domain, source: "custom" as const }));
+
+	const domains = [...envDomains, ...customDomains];
 	const emailAddresses = c.env.EMAIL_ADDRESSES ?? [];
 	return c.json({ domains, emailAddresses });
 });

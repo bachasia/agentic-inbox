@@ -200,4 +200,49 @@ app.put("/users/:userId/mailboxes", async (c) => {
 	return c.json({ userId, mailboxIds });
 });
 
+// Domain validation: lowercase, no protocol, no trailing slash
+function isValidDomain(domain: string): boolean {
+	return /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z]{2,})+$/.test(domain);
+}
+
+// Add a custom domain (persisted in D1)
+app.post("/domains", async (c) => {
+	const { domain: raw } = await c.req.json<{ domain: string }>();
+	const domain = (raw ?? "").toLowerCase().trim()
+		.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+
+	if (!domain || !isValidDomain(domain)) {
+		return c.json({ error: "Invalid domain format" }, 400);
+	}
+
+	const user = c.get("user");
+	try {
+		await c.env.AUTH_DB.prepare(
+			"INSERT INTO custom_domains (id, domain, created_at, created_by) VALUES (?, ?, ?, ?)"
+		).bind(crypto.randomUUID(), domain, new Date().toISOString(), user.id).run();
+		return c.json({ domain, source: "custom" }, 201);
+	} catch (e: any) {
+		if (e?.message?.includes("UNIQUE")) {
+			return c.json({ error: "Domain already exists" }, 409);
+		}
+		throw e;
+	}
+});
+
+// Delete a custom domain (only D1-managed — env var domains are protected)
+app.delete("/domains/:domain", async (c) => {
+	const domain = decodeURIComponent(c.req.param("domain")).toLowerCase();
+	const envDomains = (c.env.DOMAINS || "").split(",").map((d) => d.trim()).filter(Boolean);
+	if (envDomains.includes(domain)) {
+		return c.json({ error: "Cannot delete env-configured domain" }, 403);
+	}
+	const result = await c.env.AUTH_DB.prepare(
+		"DELETE FROM custom_domains WHERE domain = ?"
+	).bind(domain).run();
+	if (result.meta.changes === 0) {
+		return c.json({ error: "Domain not found" }, 404);
+	}
+	return c.json({ ok: true });
+});
+
 export { app as adminRoutes };

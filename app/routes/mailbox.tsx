@@ -3,7 +3,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { useEffect, useRef } from "react";
-import { Outlet, useParams } from "react-router";
+import { Outlet, useParams, useNavigate } from "react-router";
 import AgentSidebar from "~/components/AgentSidebar";
 import ComposeEmail from "~/components/ComposeEmail";
 import Header from "~/components/Header";
@@ -14,11 +14,19 @@ import { useFolders } from "~/queries/folders";
 import { useUIStore } from "~/hooks/useUIStore";
 import { useKeyboardShortcuts } from "~/hooks/useKeyboardShortcuts";
 import { Folders } from "shared/folders";
+import { ApiError } from "~/services/api";
 
 export default function MailboxRoute() {
 	const { mailboxId } = useParams<{ mailboxId: string }>();
-	// Prefetch mailbox data for child components
-	useMailbox(mailboxId);
+	const navigate = useNavigate();
+	const { error } = useMailbox(mailboxId);
+
+	// Redirect to home if user has no access to this mailbox
+	useEffect(() => {
+		if (error instanceof ApiError && (error.status === 403 || error.status === 404)) {
+			navigate("/", { replace: true });
+		}
+	}, [error, navigate]);
 
 	const { data: folders } = useFolders(mailboxId);
 	const inboxUnread = folders?.find((f) => f.id === Folders.INBOX)?.unreadCount ?? 0;

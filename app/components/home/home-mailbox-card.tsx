@@ -78,7 +78,7 @@ export function HomeMailboxCard({ account, onDelete }: { account: CardAccount; o
 					<button
 						type="button"
 						aria-label="Delete mailbox"
-						className="opacity-0 group-hover:opacity-100 w-7 h-7 rounded-md flex items-center justify-center text-kumo-subtle hover:bg-kumo-fill hover:text-red-500 transition-all shrink-0"
+						className="opacity-0 group-hover:opacity-100 w-7 h-7 rounded-md flex items-center justify-center text-kumo-subtle hover:bg-kumo-fill hover:text-red-500 transition-all shrink-0 cursor-pointer"
 						onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(); }}
 					>
 						<TrashIcon size={14} />
@@ -125,7 +125,7 @@ export function AddMailboxCard({ domain, onClick }: { domain: string; onClick: (
 		<button
 			type="button"
 			onClick={onClick}
-			className="home-add-card rounded-xl border border-dashed border-kumo-line min-h-[120px] w-full flex flex-col items-center justify-center gap-2 text-sm text-kumo-subtle"
+			className="home-add-card rounded-xl border border-dashed border-kumo-line min-h-[120px] w-full flex flex-col items-center justify-center gap-2 text-sm text-kumo-subtle cursor-pointer"
 		>
 			<div className="w-9 h-9 rounded-full border border-dashed border-current flex items-center justify-center">
 				<PlusIcon size={16} />

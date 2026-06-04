@@ -1,6 +1,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "dtc-inbox",
+	"account_id": "a84f09108b958371420c72226b906d4f",
 	"compatibility_date": "2025-11-28",
 	"main": "./workers/app.ts",
 	"observability": {
@@ -90,7 +91,7 @@
 				{ "binding": "AUTH_DB", "database_name": "auth-db-production", "database_id": "ca1052f4-f401-45d9-a2de-3729d433a342", "migrations_dir": "migrations" }
 			],
 			"vars": {
-				"DOMAINS": "kozmozracing.com,ezcustomcar.com,littleowh.com,aloprints.com",
+				"DOMAINS": "",
 				"EMAIL_ADDRESSES": []
 			},
 			"send_email": [

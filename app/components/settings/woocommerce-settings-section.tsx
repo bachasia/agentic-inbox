@@ -4,7 +4,7 @@
 
 import { Button, Input, useKumoToastManager } from "@cloudflare/kumo";
 import { StorefrontIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import api from "~/services/api";
 import type { WooCommerceSettings } from "~/types";
 
@@ -25,6 +25,18 @@ export default function WooCommerceSettingsSection({
 	const [consumerKey, setConsumerKey] = useState(initialSettings?.consumerKey ?? "");
 	const [consumerSecret, setConsumerSecret] = useState(initialSettings?.consumerSecret ?? "");
 	const [testing, setTesting] = useState(false);
+	const [connectionStatus, setConnectionStatus] = useState<"connected" | "failed" | null>(null);
+
+	// Auto-test on mount if credentials are already configured
+	useEffect(() => {
+		if (!mailboxId || !initialSettings?.enabled) return;
+		const { storeUrl: url, consumerKey: key, consumerSecret: secret } = initialSettings;
+		if (!url || !key || !secret) return;
+		api.testWooCommerce(mailboxId, { storeUrl: url, consumerKey: key, consumerSecret: secret })
+			.then((result) => setConnectionStatus(result.success ? "connected" : "failed"))
+			.catch(() => setConnectionStatus("failed"));
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
 
 	function notify(field: "enabled" | "storeUrl" | "consumerKey" | "consumerSecret", value: boolean | string) {
 		const next: WooCommerceSettings = {
@@ -43,11 +55,14 @@ export default function WooCommerceSettingsSection({
 		try {
 			const result = await api.testWooCommerce(mailboxId, { storeUrl, consumerKey, consumerSecret });
 			if (result.success) {
+				setConnectionStatus("connected");
 				toastManager.add({ title: "WooCommerce connection successful!" });
 			} else {
+				setConnectionStatus("failed");
 				toastManager.add({ title: `WooCommerce test failed: ${result.error}`, variant: "error" });
 			}
 		} catch {
+			setConnectionStatus("failed");
 			toastManager.add({ title: "WooCommerce test request failed", variant: "error" });
 		} finally {
 			setTesting(false);
@@ -60,6 +75,21 @@ export default function WooCommerceSettingsSection({
 				<div className="flex items-center gap-2">
 					<StorefrontIcon size={16} weight="duotone" className="text-kumo-subtle" />
 					<span className="text-sm font-medium text-kumo-default">WooCommerce</span>
+					{connectionStatus === "connected" && (
+						<span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-kumo-success text-white">
+							<span className="w-1.5 h-1.5 rounded-full bg-white/60" />
+							Connected
+						</span>
+					)}
+					{connectionStatus === "failed" && (
+						<span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-kumo-danger text-white">
+							<span className="w-1.5 h-1.5 rounded-full bg-white/60" />
+							Failed
+						</span>
+					)}
+					{testing && !connectionStatus && (
+						<span className="text-xs text-kumo-subtle">Testing…</span>
+					)}
 				</div>
 				<label className="flex items-center gap-2 cursor-pointer">
 					<input

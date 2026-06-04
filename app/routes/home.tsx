@@ -95,7 +95,7 @@ export default function HomeRoute() {
 		staleTime: Infinity,
 	});
 
-	const domains = configData?.domains ?? [];
+	const domains = (configData?.domains ?? []).map((d) => d.domain);
 	const emailAddresses = configData?.emailAddresses ?? [];
 
 	// UI state

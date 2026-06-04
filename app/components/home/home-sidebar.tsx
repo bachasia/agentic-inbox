@@ -121,7 +121,7 @@ export default function HomeSidebar({
 					<button
 						type="button"
 						onClick={() => onDomainChange(null)}
-						className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-xs font-mono transition-colors ${
+						className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-xs font-mono transition-colors cursor-pointer ${
 							activeDomain === null
 								? "bg-kumo-fill text-kumo-default"
 								: "text-kumo-subtle hover:bg-kumo-fill hover:text-kumo-strong"
@@ -136,7 +136,7 @@ export default function HomeSidebar({
 							key={domain}
 							type="button"
 							onClick={() => onDomainChange(domain)}
-							className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-xs font-mono transition-colors ${
+							className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-xs font-mono transition-colors cursor-pointer ${
 								activeDomain === domain
 									? "bg-kumo-fill text-kumo-default"
 									: "text-kumo-subtle hover:bg-kumo-fill hover:text-kumo-strong"
@@ -168,7 +168,7 @@ export default function HomeSidebar({
 						<button
 							type="button"
 							onClick={handleLogout}
-							className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-kumo-strong hover:bg-kumo-fill transition-colors border-t border-kumo-line"
+							className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-kumo-strong hover:bg-kumo-fill transition-colors border-t border-kumo-line cursor-pointer"
 						>
 							<SignOutIcon size={15} />
 							Log out
@@ -180,7 +180,7 @@ export default function HomeSidebar({
 				<button
 					type="button"
 					onClick={() => setMenuOpen((o) => !o)}
-					className={`w-full rounded-xl border border-kumo-line bg-kumo-base p-3 flex items-center gap-2.5 transition-colors hover:bg-kumo-fill text-left ${menuOpen ? "bg-kumo-fill" : ""}`}
+					className={`w-full rounded-xl border border-kumo-line bg-kumo-base p-3 flex items-center gap-2.5 transition-colors hover:bg-kumo-fill text-left cursor-pointer ${menuOpen ? "bg-kumo-fill" : ""}`}
 				>
 					<div
 						className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0"

@@ -220,6 +220,11 @@ export interface RuleAction {
 	params?: Record<string, string>;
 }
 
+export interface DomainInfo {
+	domain: string;
+	source: "env" | "custom";
+}
+
 export interface AutomationRule {
 	id: string;
 	name: string;

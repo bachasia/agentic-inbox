@@ -315,7 +315,7 @@ export default function EmailListRoute() {
 				</div>
 
 				{/* Email rows */}
-				<div className="flex-1 overflow-y-auto">
+				<div className="flex-1 overflow-y-auto overflow-x-hidden">
 				{isRefreshing && emails.length === 0 ? (
 					<EmailListSkeleton />
 				) : emails.length > 0 ? (
@@ -351,7 +351,7 @@ export default function EmailListRoute() {
 									{email.triage_priority && email.triage_priority >= 3 && (
 										<div className={`w-[3px] shrink-0 self-stretch ${email.triage_priority >= 4 ? "bg-red-500" : "bg-orange-400"}`} />
 									)}
-									<div className={`flex items-center gap-3 flex-1 px-4 py-2.5 md:py-3 ${
+									<div className={`flex items-center gap-3 flex-1 min-w-0 px-4 py-2.5 md:py-3 ${
 										isPanelOpen ? "md:px-4 md:py-2.5" : "md:px-6"
 									}`}>
 										{/* Unread dot */}
@@ -385,7 +385,7 @@ export default function EmailListRoute() {
 										<div className="min-w-0 flex-1">
 											<div className="flex items-center gap-2">
 												<span
-													className={`truncate text-sm ${hasUnread(email) ? "font-semibold text-kumo-default" : "text-kumo-strong"}`}
+													className={`truncate min-w-0 text-sm ${hasUnread(email) ? "font-semibold text-kumo-default" : "text-kumo-strong"}`}
 												>
 													{formatParticipants(email)}
 												</span>

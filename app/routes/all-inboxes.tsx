@@ -9,6 +9,24 @@ import { queryKeys } from "~/queries/keys";
 import api from "~/services/api";
 import HomeSidebar from "~/components/home/home-sidebar";
 import HomeTopBar from "~/components/home/home-top-bar";
+import { getSnippetText } from "~/lib/utils";
+import { useUIStore } from "~/hooks/useUIStore";
+
+// Stable color per mailbox using a small palette
+const BADGE_COLORS = [
+	"bg-indigo-500",
+	"bg-emerald-500",
+	"bg-orange-500",
+	"bg-pink-500",
+	"bg-sky-500",
+	"bg-violet-500",
+	"bg-teal-500",
+	"bg-rose-500",
+];
+function mailboxColor(mailboxId: string, mailboxIds: string[]): string {
+	const idx = mailboxIds.indexOf(mailboxId);
+	return BADGE_COLORS[(idx < 0 ? 0 : idx) % BADGE_COLORS.length];
+}
 
 const PAGE_SIZE = 25;
 
@@ -20,6 +38,7 @@ export default function AllInboxesRoute() {
 	const { data: session } = authClient.useSession();
 	const { data: mailboxes = [], isLoading: mailboxesLoading } = useMailboxes();
 	const navigate = useNavigate();
+	const { selectEmail } = useUIStore();
 	const [page, setPage] = useState(1);
 
 	const { data, isLoading: emailsLoading } = useQuery({
@@ -35,6 +54,7 @@ export default function AllInboxesRoute() {
 	const emails = data?.emails ?? [];
 	const total = data?.total ?? 0;
 	const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+	const mailboxIds = mailboxes.map((m) => m.id);
 
 	return (
 		<div className="flex min-h-screen bg-kumo-recessed">
@@ -100,59 +120,64 @@ export default function AllInboxesRoute() {
 					) : (
 						<>
 							<div className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
-								{emails.map((email, i) => (
-									<button
-										key={email.id}
-										type="button"
-										onClick={() => navigate(`/mailbox/${email.mailboxId}/emails/inbox?email=${email.id}`)}
-										className={`w-full flex items-center gap-4 px-4 py-3 text-left transition-colors relative ${
-											i > 0 ? "border-t border-kumo-line" : ""
-										} ${!email.read ? "hover:bg-[rgba(79,70,229,0.03)]" : "hover:bg-kumo-fill"}`}
-										style={!email.read ? { boxShadow: "inset 3px 0 0 var(--home-indigo)" } : undefined}
-									>
-										{/* Mailbox badge */}
-										<span className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded bg-kumo-fill border border-kumo-line text-kumo-subtle max-w-[80px] truncate">
-											{email.mailboxId.split("@")[0]}
-										</span>
-
-										{/* Unread dot */}
-										<span
-											className={`shrink-0 w-2 h-2 rounded-full ${
-												!email.read ? "bg-[var(--home-indigo)]" : "bg-transparent"
-											}`}
-										/>
-
-										{/* Sender */}
-										<span
-											className={`shrink-0 w-36 truncate text-sm ${
-												!email.read ? "font-semibold text-kumo-default" : "text-kumo-strong"
-											}`}
+								{emails.map((email, i) => {
+									const snippet = getSnippetText(email.snippet, 120);
+									const badgeColor = mailboxColor(email.mailboxId, mailboxIds);
+									const mailboxLabel = email.mailboxId.split("@")[1] ?? email.mailboxId;
+									return (
+										<button
+											key={email.id}
+											type="button"
+											onClick={() => {
+												selectEmail(email.id);
+												navigate(`/mailbox/${encodeURIComponent(email.mailboxId)}/emails/inbox`);
+											}}
+											className={`w-full px-5 py-3.5 text-left transition-colors relative group cursor-pointer ${
+												i > 0 ? "border-t border-kumo-line" : ""
+											} hover:bg-kumo-fill`}
+											style={!email.read ? { boxShadow: "inset 3px 0 0 var(--home-indigo)" } : undefined}
 										>
-											{email.sender}
-										</span>
+											{/* Row 1: Subject + date */}
+											<div className="flex items-center gap-2 min-w-0">
+												{/* Unread dot */}
+												<span className={`shrink-0 w-2 h-2 rounded-full ${!email.read ? "bg-[var(--home-indigo)]" : "bg-transparent"}`} />
 
-										{/* Subject + snippet */}
-										<span className="flex-1 min-w-0 flex items-center gap-2 truncate">
-											<span
-												className={`text-sm truncate ${
-													!email.read ? "font-medium text-kumo-default" : "text-kumo-strong"
-												}`}
-											>
-												{email.subject}
-											</span>
-											{email.snippet && (
-												<span className="text-sm text-kumo-subtle truncate hidden md:inline">
-													— {email.snippet}
+												{/* Subject — primary */}
+												<span className={`flex-1 min-w-0 truncate text-sm ${!email.read ? "font-semibold text-kumo-default" : "font-medium text-kumo-strong"}`}>
+													{email.subject || "(no subject)"}
 												</span>
-											)}
-										</span>
 
-										{/* Date */}
-										<span className="shrink-0 text-xs text-kumo-subtle">
-											{email.date ? formatListDate(email.date) : ""}
-										</span>
-									</button>
-								))}
+												{/* Date */}
+												<span className="shrink-0 text-xs text-kumo-subtle ml-2">
+													{email.date ? formatListDate(email.date) : ""}
+												</span>
+											</div>
+
+											{/* Row 2: Mailbox badge + sender + snippet */}
+											<div className="flex items-center gap-2 mt-1 min-w-0 pl-4">
+												{/* Mailbox badge */}
+												<span className={`shrink-0 text-[10px] font-medium px-2 py-0.5 rounded text-white max-w-[200px] truncate ${badgeColor}`}>
+													{mailboxLabel}
+												</span>
+
+												{/* Sender */}
+												<span className="shrink-0 text-xs text-kumo-subtle truncate max-w-[140px]">
+													{email.sender}
+												</span>
+
+												{/* Snippet */}
+												{snippet && (
+													<>
+														<span className="shrink-0 text-kumo-line">·</span>
+														<span className="flex-1 min-w-0 truncate text-xs text-kumo-subtle">
+															{snippet}
+														</span>
+													</>
+												)}
+											</div>
+										</button>
+									);
+								})}
 							</div>
 
 							{totalPages > 1 && (
