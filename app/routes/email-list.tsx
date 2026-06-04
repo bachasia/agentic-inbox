@@ -356,6 +356,7 @@ export default function EmailListRoute() {
 	const {
 		data: emailData,
 		isFetching: isRefreshing,
+		isLoading: isEmailsLoading,
 	} = useEmails(mailboxId, params, { refetchInterval: 30_000 });
 
 	const emails = emailData?.emails ?? [];
@@ -475,7 +476,7 @@ export default function EmailListRoute() {
 
 				{/* Email rows */}
 				<div className="flex-1 overflow-y-auto overflow-x-hidden">
-				{isRefreshing && emails.length === 0 ? (
+				{(isEmailsLoading || isRefreshing) && emails.length === 0 ? (
 					<EmailListSkeleton />
 				) : emails.length > 0 ? (
 						<div>

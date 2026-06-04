@@ -1,5 +1,5 @@
 import { EnvelopeIcon } from "@phosphor-icons/react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { memo, useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { formatListDate } from "shared/dates";
@@ -88,6 +88,7 @@ export default function AllInboxesRoute() {
 	const { data, isLoading: emailsLoading } = useQuery({
 		queryKey: queryKeys.emails.all("inbox", PAGE_SIZE, page),
 		queryFn: () => api.getAllEmails("inbox", PAGE_SIZE, page),
+		placeholderData: keepPreviousData,
 	});
 
 	const totalUnread = mailboxes.reduce(

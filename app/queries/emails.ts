@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "~/services/api";
 import type { Email } from "~/types";
 import { queryKeys } from "./keys";
@@ -44,6 +44,7 @@ export function useEmails(
 		},
 		enabled: !!mailboxId && (options?.enabled ?? true),
 		refetchInterval: options?.refetchInterval,
+		placeholderData: keepPreviousData,
 	});
 }
 

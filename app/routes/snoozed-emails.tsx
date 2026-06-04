@@ -45,7 +45,7 @@ export default function SnoozedEmailsRoute() {
 	// selectEmail is a stable Zustand action — no useCallback needed
 	const { selectedEmailId, isComposing, selectEmail } = useUIStore();
 
-	const { data } = useQuery({
+	const { data, isLoading: emailsLoading } = useQuery({
 		queryKey: ["mailboxes", mailboxId, "snoozed"],
 		queryFn: () => api.listSnoozed(mailboxId!),
 		enabled: !!mailboxId,
@@ -58,7 +58,7 @@ export default function SnoozedEmailsRoute() {
 				<h1 className="text-lg font-semibold text-kumo-default">Snoozed</h1>
 			</div>
 			<div className="flex-1 overflow-y-auto">
-				{emails.length === 0 ? (
+				{emailsLoading ? null : emails.length === 0 ? (
 					<div className="flex flex-col items-center justify-center py-24 px-6 text-center">
 						<HourglassIcon size={48} weight="thin" className="text-kumo-subtle mb-4" />
 						<h3 className="text-base font-semibold text-kumo-default mb-1.5">No snoozed emails</h3>

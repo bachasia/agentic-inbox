@@ -94,7 +94,7 @@ export default function PriorityInboxRoute() {
 	// selectEmail is a stable Zustand action — no useCallback needed
 	const { selectedEmailId, isComposing, selectEmail } = useUIStore();
 
-	const { data } = useQuery({
+	const { data, isLoading: emailsLoading } = useQuery({
 		queryKey: queryKeys.priorityInbox.list(mailboxId!),
 		queryFn: () => api.listPriorityInbox(mailboxId!),
 		enabled: !!mailboxId,
@@ -111,7 +111,7 @@ export default function PriorityInboxRoute() {
 				</h1>
 			</div>
 			<div className="flex-1 overflow-y-auto">
-				{emails.length === 0 ? (
+				{emailsLoading ? null : emails.length === 0 ? (
 					<div className="flex flex-col items-center justify-center py-24 px-6 text-center">
 						<LightningIcon size={48} weight="thin" className="text-kumo-subtle mb-4" />
 						<h3 className="text-base font-semibold text-kumo-default mb-1.5">No priority emails</h3>

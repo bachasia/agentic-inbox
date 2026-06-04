@@ -304,8 +304,10 @@ const api = {
 	// WooCommerce
 	testWooCommerce: (mailboxId: string, settings: { storeUrl: string; consumerKey: string; consumerSecret: string }) =>
 		post<{ success: boolean; error?: string }>(`/api/v1/mailboxes/${mailboxId}/woocommerce/test`, settings),
-	getWooOrders: (mailboxId: string, email: string) =>
-		get<{ orders: WooCommerceOrder[] }>(`/api/v1/mailboxes/${mailboxId}/woocommerce/orders`, { params: { email } }),
+	getWooOrders: (mailboxId: string, email: string, refresh = false) =>
+		get<{ orders: WooCommerceOrder[] }>(`/api/v1/mailboxes/${mailboxId}/woocommerce/orders`, {
+			params: refresh ? { email, refresh: "1" } : { email },
+		}),
 };
 
 export default api;

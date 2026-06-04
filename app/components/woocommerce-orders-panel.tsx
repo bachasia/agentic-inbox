@@ -3,6 +3,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { useState } from "react";
+import { ArrowsClockwise } from "@phosphor-icons/react";
 import type { WooCommerceOrder, WooCommerceTracking } from "~/types";
 import { useWooCommerceOrders } from "~/queries/woocommerce-orders-query";
 
@@ -87,7 +88,13 @@ function OrderCard({ order }: { order: WooCommerceOrder }) {
 const INITIAL_SHOWN = 3;
 
 export default function WooCommerceOrdersPanel({ mailboxId, contactEmail }: WooCommerceOrdersPanelProps) {
-	const { data, isLoading, isError } = useWooCommerceOrders(mailboxId, contactEmail);
+	const { data, isLoading, isError, refresh } = useWooCommerceOrders(mailboxId, contactEmail);
+	const [isRefreshing, setIsRefreshing] = useState(false);
+
+	const handleRefresh = async () => {
+		setIsRefreshing(true);
+		try { await refresh(); } finally { setIsRefreshing(false); }
+	};
 	const [showAll, setShowAll] = useState(false);
 
 	if (isLoading) {
@@ -120,6 +127,15 @@ export default function WooCommerceOrdersPanel({ mailboxId, contactEmail }: WooC
 			<div className="rounded-lg border border-kumo-line bg-kumo-subtle p-3 space-y-2">
 				<div className="flex items-center justify-between">
 					<span className="text-xs font-medium text-kumo-default">Orders ({orders.length})</span>
+					<button
+						type="button"
+						onClick={handleRefresh}
+						disabled={isRefreshing}
+						className="text-kumo-muted hover:text-kumo-default transition-colors disabled:opacity-50"
+						title="Refresh orders"
+					>
+						<ArrowsClockwise size={13} className={isRefreshing ? "animate-spin" : ""} />
+					</button>
 				</div>
 				<div className="space-y-2">
 					{visible.map((order) => (
