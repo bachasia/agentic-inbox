@@ -194,13 +194,11 @@ export default function ComposePanel() {
 						</div>
 					</div>
 
-					<div className="border border-kumo-line rounded-md overflow-hidden bg-kumo-base">
-						<RichTextEditor
-							value={body}
-							onChange={setBody}
-							onUploadImage={mailboxId ? (f) => api.uploadComposeImage(mailboxId, f) : undefined}
-						/>
-					</div>
+					<RichTextEditor
+						value={body}
+						onChange={setBody}
+						onUploadImage={mailboxId ? (f) => api.uploadComposeImage(mailboxId, f) : undefined}
+					/>
 				</div>
 
 				{/* Attachment chips */}
