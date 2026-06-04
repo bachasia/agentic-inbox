@@ -16,10 +16,9 @@ import api from "~/services/api";
 import { useDeleteEmail, useEmail, useMoveEmail, useReplyToEmail, useSendEmail, useThreadReplies, useUpdateEmail } from "~/queries/emails";
 import { useFolders } from "~/queries/folders";
 import { useMailbox } from "~/queries/mailboxes";
+import { useCreateRule, useDeleteRule, useRules } from "~/queries/rules-query";
 import { useUIStore } from "~/hooks/useUIStore";
 import { useActionItems, useCompleteActionItem } from "~/queries/action-items-query";
-import { useContactIntelligence } from "~/queries/contact-intelligence-query";
-import ContactIntelligencePanel from "~/components/ContactIntelligencePanel";
 import WooCommerceOrdersPanel from "~/components/woocommerce-orders-panel";
 import type { Email, Folder, Mailbox } from "~/types";
 
@@ -48,6 +47,9 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const { data: currentMailbox } = useMailbox(mailboxId) as {
 		data?: Mailbox;
 	};
+	const { data: rules = [] } = useRules(mailboxId);
+	const createRule = useCreateRule(mailboxId ?? "");
+	const deleteRule = useDeleteRule(mailboxId ?? "");
 	const { closePanel, startCompose } = useUIStore();
 	const toastManager = useKumoToastManager();
 	const [isSending, setIsSending] = useState(false);
@@ -55,6 +57,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
 	const [previewImage, setPreviewImage] = useState<{ url: string; filename: string } | null>(null);
 	const isDraftFolder = folder === Folders.DRAFT;
+	const isSpamFolder = (folder || email?.folder_id) === Folders.SPAM;
 
 	const threadReplies = useMemo(() => {
 		if (!threadRepliesRaw || !email) return [];
@@ -93,7 +96,6 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const { data: actionItems = [] } = useActionItems(mailboxId, false);
 	const completeActionItem = useCompleteActionItem(mailboxId ?? "");
 	const senderEmail = email?.sender;
-	const { data: contactIntelligence } = useContactIntelligence(mailboxId, senderEmail);
 
 	if (!email) return <EmailPanelSkeleton />;
 
@@ -102,6 +104,27 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const toggleStar = () => { if (mailboxId) updateEmail.mutate({ mailboxId, id: email.id, data: { starred: !email.starred } }); };
 	const handleMove = (folderId: string) => { if (mailboxId) { moveEmailMut.mutate({ mailboxId, id: email.id, folderId }); closePanel(); } };
 	const handleDelete = () => { if (mailboxId) { if (!window.confirm("Are you sure you want to delete this email?")) return; deleteEmailMut.mutate({ mailboxId, id: email.id }); closePanel(); } };
+	const SPAM_RULE_PREFIX = "Auto-spam: ";
+	const handleMarkAsSpam = () => {
+		if (!mailboxId) return;
+		if (isSpamFolder) {
+			// Unmark: move back to inbox and remove the auto-created spam rule
+			handleMove(Folders.INBOX);
+			const spamRule = rules.find((r) => r.name === `${SPAM_RULE_PREFIX}${email?.sender}`);
+			if (spamRule) deleteRule.mutate(spamRule.id);
+		} else {
+			// Mark as spam: move + create rule to auto-filter future emails from same sender
+			handleMove(Folders.SPAM);
+			const alreadyHasRule = rules.some((r) => r.name === `${SPAM_RULE_PREFIX}${email?.sender}`);
+			if (!alreadyHasRule && email?.sender) {
+				createRule.mutate({
+					name: `${SPAM_RULE_PREFIX}${email.sender}`,
+					conditions: [{ field: "from", operator: "equals", value: email.sender }],
+					actions: [{ type: "move", params: { folder: Folders.SPAM } }],
+				});
+			}
+		}
+	};
 
 	const handleEditDraft = (draftMsg?: Email) => {
 		const target = draftMsg || email;
@@ -182,6 +205,8 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 						});
 					}
 				}}
+				isSpamFolder={isSpamFolder}
+				onMarkAsSpam={handleMarkAsSpam}
 				onMove={handleMove}
 				onViewSource={() => setSourceViewEmail(email)}
 				onDelete={handleDelete}
@@ -207,18 +232,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				</div>
 			)}
 
-			{(contactIntelligence || senderEmail) && (
-				<div className="px-5 py-3 border-b border-kumo-line space-y-3">
-					{contactIntelligence && (
-						<ContactIntelligencePanel
-							intelligence={contactIntelligence}
-							contactEmail={senderEmail ?? ""}
-							mailboxId={mailboxId}
-						/>
-					)}
-					<WooCommerceOrdersPanel mailboxId={mailboxId} contactEmail={senderEmail} />
-				</div>
-			)}
+			{senderEmail && <WooCommerceOrdersPanel mailboxId={mailboxId} contactEmail={senderEmail} />}
 
 			<EmailPanelHeader
 				subject={email.subject}

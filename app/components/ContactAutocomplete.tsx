@@ -52,8 +52,8 @@ export function ContactAutocomplete({ label, value, onChange, mailboxId, placeho
 	};
 
 	return (
-		<div ref={ref} className="relative">
-			<label className="block text-xs font-medium text-kumo-subtle mb-1">{label}</label>
+		<div ref={ref} className="relative w-full">
+			{label && <label className="block text-xs font-medium text-kumo-subtle mb-1">{label}</label>}
 			<input
 				type="text"
 				value={value}
@@ -61,7 +61,7 @@ export function ContactAutocomplete({ label, value, onChange, mailboxId, placeho
 				onFocus={() => suggestions.length > 0 && setShowDropdown(true)}
 				onKeyDown={(e) => { if (e.key === "Escape") setShowDropdown(false); }}
 				placeholder={placeholder}
-				className="w-full text-sm border border-kumo-line rounded px-2 py-1.5 bg-kumo-base text-kumo-default focus:outline-none focus:border-kumo-accent"
+				className={label ? "w-full text-sm border border-kumo-line rounded px-2 py-1.5 bg-kumo-base text-kumo-default focus:outline-none focus:border-kumo-accent" : "w-full text-sm bg-transparent outline-none text-kumo-default placeholder:text-kumo-muted"}
 			/>
 			{showDropdown && suggestions.length > 0 && (
 				<div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-lg border border-kumo-line bg-kumo-elevated shadow-lg max-h-48 overflow-y-auto">

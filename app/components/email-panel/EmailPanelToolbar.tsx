@@ -15,6 +15,7 @@ import {
 	FolderSimpleIcon,
 	PaperPlaneTiltIcon,
 	PencilSimpleIcon,
+	ProhibitIcon,
 	StarIcon,
 	TrashIcon,
 	XIcon,
@@ -38,6 +39,8 @@ interface EmailPanelToolbarProps {
 	onForward: () => void;
 	onToggleStar: () => void;
 	onToggleRead: () => void;
+	isSpamFolder: boolean;
+	onMarkAsSpam: () => void;
 	onMove: (folderId: string) => void;
 	onViewSource: () => void;
 	onDelete: () => void;
@@ -57,6 +60,8 @@ export default function EmailPanelToolbar({
 	onForward,
 	onToggleStar,
 	onToggleRead,
+	isSpamFolder,
+	onMarkAsSpam,
 	onMove,
 	onViewSource,
 	onDelete,
@@ -159,6 +164,19 @@ export default function EmailPanelToolbar({
 			</Tooltip>
 
 			<MoveToFolderMenu folders={moveToFolders} onMove={onMove} />
+
+			{!isDraftFolder && (
+				<Tooltip content={isSpamFolder ? "Not spam" : "Mark as spam"} side="bottom" asChild>
+					<Button
+						variant="ghost"
+						shape="square"
+						size="sm"
+						icon={<ProhibitIcon size={18} className={isSpamFolder ? "text-kumo-danger" : ""} />}
+						onClick={onMarkAsSpam}
+						aria-label={isSpamFolder ? "Not spam" : "Mark as spam"}
+					/>
+				</Tooltip>
+			)}
 
 			{!isDraftFolder && mailboxId && (
 				<>

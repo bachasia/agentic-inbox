@@ -5,6 +5,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import { LightningIcon } from "@phosphor-icons/react";
+import { memo } from "react";
 import MailboxSplitView from "~/components/MailboxSplitView";
 import { useUIStore } from "~/hooks/useUIStore";
 import { LabelBadge } from "~/components/LabelBadge";
@@ -33,8 +34,64 @@ function CategoryChip({ category }: { category?: string | null }) {
 	);
 }
 
+interface PriorityRowProps {
+	email: Email;
+	isSelected: boolean;
+	onSelect: (id: string) => void;
+}
+
+// Memoized row: only re-renders when isSelected or email data changes
+const PriorityRow = memo(function PriorityRow({ email, isSelected, onSelect }: PriorityRowProps) {
+	const snippet = getSnippetText(email.snippet);
+	const isUnread = !email.read;
+	return (
+		<div
+			role="button"
+			tabIndex={0}
+			onClick={() => onSelect(email.id)}
+			onKeyDown={(e) => { if (e.key === "Enter") onSelect(email.id); }}
+			className={`flex items-stretch gap-0 w-full text-left cursor-pointer border-b border-kumo-line transition-colors ${isSelected ? "bg-kumo-tint" : "hover:bg-kumo-tint"}`}
+		>
+			<PriorityBand priority={email.triage_priority} />
+			<div className="flex items-center gap-3 flex-1 px-4 py-2.5 md:px-5 md:py-3">
+				<div className="w-2.5 shrink-0 flex justify-center">
+					{isUnread && <div className="h-2 w-2 rounded-full bg-kumo-brand" />}
+				</div>
+				<div className="min-w-0 flex-1">
+					<div className="flex items-center gap-2">
+						<span className={`truncate text-sm ${isUnread ? "font-semibold text-kumo-default" : "text-kumo-strong"}`}>
+							{email.sender.split("@")[0]}
+						</span>
+						<CategoryChip category={email.triage_category} />
+						<span className="text-sm text-kumo-subtle shrink-0 ml-auto">{formatListDate(email.date)}</span>
+					</div>
+					<div className="truncate text-sm mt-0.5">
+						<span className={isUnread ? "font-medium text-kumo-default" : "text-kumo-subtle"}>
+							{email.subject}
+						</span>
+						{snippet && (
+							<span className="text-kumo-subtle font-normal">{" "}&mdash; {snippet}</span>
+						)}
+					</div>
+					{email.triage_summary && (
+						<div className="text-xs text-kumo-subtle italic mt-0.5 truncate">{email.triage_summary}</div>
+					)}
+					{email.labels && email.labels.length > 0 && (
+						<div className="flex items-center gap-1 mt-1 flex-wrap">
+							{email.labels.map((label) => (
+								<LabelBadge key={label.id} label={label} size="xs" />
+							))}
+						</div>
+					)}
+				</div>
+			</div>
+		</div>
+	);
+});
+
 export default function PriorityInboxRoute() {
 	const { mailboxId } = useParams<{ mailboxId: string }>();
+	// selectEmail is a stable Zustand action — no useCallback needed
 	const { selectedEmailId, isComposing, selectEmail } = useUIStore();
 
 	const { data } = useQuery({
@@ -60,54 +117,14 @@ export default function PriorityInboxRoute() {
 						<h3 className="text-base font-semibold text-kumo-default mb-1.5">No priority emails</h3>
 						<p className="text-sm text-kumo-subtle max-w-xs">High-priority emails will appear here once AI triage processes them.</p>
 					</div>
-				) : emails.map((email) => {
-					const snippet = getSnippetText(email.snippet);
-					const isUnread = !email.read;
-					return (
-						<div
-							key={email.id}
-							role="button"
-							tabIndex={0}
-							onClick={() => selectEmail(email.id)}
-							onKeyDown={(e) => { if (e.key === "Enter") selectEmail(email.id); }}
-							className={`flex items-stretch gap-0 w-full text-left cursor-pointer border-b border-kumo-line transition-colors ${selectedEmailId === email.id ? "bg-kumo-tint" : "hover:bg-kumo-tint"}`}
-						>
-							<PriorityBand priority={email.triage_priority} />
-							<div className="flex items-center gap-3 flex-1 px-4 py-2.5 md:px-5 md:py-3">
-								<div className="w-2.5 shrink-0 flex justify-center">
-									{isUnread && <div className="h-2 w-2 rounded-full bg-kumo-brand" />}
-								</div>
-								<div className="min-w-0 flex-1">
-									<div className="flex items-center gap-2">
-										<span className={`truncate text-sm ${isUnread ? "font-semibold text-kumo-default" : "text-kumo-strong"}`}>
-											{email.sender.split("@")[0]}
-										</span>
-										<CategoryChip category={email.triage_category} />
-										<span className="text-sm text-kumo-subtle shrink-0 ml-auto">{formatListDate(email.date)}</span>
-									</div>
-									<div className="truncate text-sm mt-0.5">
-										<span className={isUnread ? "font-medium text-kumo-default" : "text-kumo-subtle"}>
-											{email.subject}
-										</span>
-										{snippet && (
-											<span className="text-kumo-subtle font-normal">{" "}&mdash; {snippet}</span>
-										)}
-									</div>
-									{email.triage_summary && (
-										<div className="text-xs text-kumo-subtle italic mt-0.5 truncate">{email.triage_summary}</div>
-									)}
-									{email.labels && email.labels.length > 0 && (
-										<div className="flex items-center gap-1 mt-1 flex-wrap">
-											{email.labels.map((label) => (
-												<LabelBadge key={label.id} label={label} size="xs" />
-											))}
-										</div>
-									)}
-								</div>
-							</div>
-						</div>
-					);
-				})}
+				) : emails.map((email) => (
+					<PriorityRow
+						key={email.id}
+						email={email}
+						isSelected={selectedEmailId === email.id}
+						onSelect={selectEmail}
+					/>
+				))}
 			</div>
 		</MailboxSplitView>
 	);

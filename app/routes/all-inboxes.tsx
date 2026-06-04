@@ -1,6 +1,6 @@
 import { EnvelopeIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { formatListDate } from "shared/dates";
 import { authClient } from "~/lib/auth-client";
@@ -30,6 +30,50 @@ function mailboxColor(mailboxId: string, mailboxIds: string[]): string {
 
 const PAGE_SIZE = 25;
 
+interface AllInboxRowProps {
+	email: { id: string; subject: string; sender: string; date: string; read: boolean; snippet?: string; mailboxId: string };
+	badgeColor: string;
+	mailboxLabel: string;
+	onClick: (emailId: string, mailboxId: string) => void;
+}
+
+// Memoized row: only re-renders when email data or badge changes
+const AllInboxRow = memo(function AllInboxRow({ email, badgeColor, mailboxLabel, onClick }: AllInboxRowProps) {
+	const snippet = getSnippetText(email.snippet, 120);
+	return (
+		<button
+			type="button"
+			onClick={() => onClick(email.id, email.mailboxId)}
+			className="w-full px-5 py-3.5 text-left transition-colors relative group cursor-pointer border-t border-kumo-line first:border-t-0 hover:bg-kumo-fill"
+			style={!email.read ? { boxShadow: "inset 3px 0 0 var(--home-indigo)" } : undefined}
+		>
+			<div className="flex items-center gap-2 min-w-0">
+				<span className={`shrink-0 w-2 h-2 rounded-full ${!email.read ? "bg-[var(--home-indigo)]" : "bg-transparent"}`} />
+				<span className={`flex-1 min-w-0 truncate text-sm ${!email.read ? "font-semibold text-kumo-default" : "font-medium text-kumo-strong"}`}>
+					{email.subject || "(no subject)"}
+				</span>
+				<span className="shrink-0 text-xs text-kumo-subtle ml-2">
+					{email.date ? formatListDate(email.date) : ""}
+				</span>
+			</div>
+			<div className="flex items-center gap-2 mt-1 min-w-0 pl-4">
+				<span className={`shrink-0 text-[10px] font-medium px-2 py-0.5 rounded text-white max-w-[200px] truncate ${badgeColor}`}>
+					{mailboxLabel}
+				</span>
+				<span className="shrink-0 text-xs text-kumo-subtle truncate max-w-[140px]">
+					{email.sender}
+				</span>
+				{snippet && (
+					<>
+						<span className="shrink-0 text-kumo-line">·</span>
+						<span className="flex-1 min-w-0 truncate text-xs text-kumo-subtle">{snippet}</span>
+					</>
+				)}
+			</div>
+		</button>
+	);
+});
+
 export function meta() {
 	return [{ title: "All Inboxes — Agentic Inbox" }];
 }
@@ -54,7 +98,14 @@ export default function AllInboxesRoute() {
 	const emails = data?.emails ?? [];
 	const total = data?.total ?? 0;
 	const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-	const mailboxIds = mailboxes.map((m) => m.id);
+	// Memoize mailboxIds to stabilize badge color computation across renders
+	const mailboxIds = useMemo(() => mailboxes.map((m) => m.id), [mailboxes]);
+
+	// Stable click handler — navigate and select don't change between renders
+	const handleEmailClick = useCallback((emailId: string, mailboxId: string) => {
+		selectEmail(emailId);
+		navigate(`/mailbox/${encodeURIComponent(mailboxId)}/emails/inbox`);
+	}, [selectEmail, navigate]);
 
 	return (
 		<div className="flex min-h-screen bg-kumo-recessed">
@@ -120,64 +171,15 @@ export default function AllInboxesRoute() {
 					) : (
 						<>
 							<div className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
-								{emails.map((email, i) => {
-									const snippet = getSnippetText(email.snippet, 120);
-									const badgeColor = mailboxColor(email.mailboxId, mailboxIds);
-									const mailboxLabel = email.mailboxId.split("@")[1] ?? email.mailboxId;
-									return (
-										<button
-											key={email.id}
-											type="button"
-											onClick={() => {
-												selectEmail(email.id);
-												navigate(`/mailbox/${encodeURIComponent(email.mailboxId)}/emails/inbox`);
-											}}
-											className={`w-full px-5 py-3.5 text-left transition-colors relative group cursor-pointer ${
-												i > 0 ? "border-t border-kumo-line" : ""
-											} hover:bg-kumo-fill`}
-											style={!email.read ? { boxShadow: "inset 3px 0 0 var(--home-indigo)" } : undefined}
-										>
-											{/* Row 1: Subject + date */}
-											<div className="flex items-center gap-2 min-w-0">
-												{/* Unread dot */}
-												<span className={`shrink-0 w-2 h-2 rounded-full ${!email.read ? "bg-[var(--home-indigo)]" : "bg-transparent"}`} />
-
-												{/* Subject — primary */}
-												<span className={`flex-1 min-w-0 truncate text-sm ${!email.read ? "font-semibold text-kumo-default" : "font-medium text-kumo-strong"}`}>
-													{email.subject || "(no subject)"}
-												</span>
-
-												{/* Date */}
-												<span className="shrink-0 text-xs text-kumo-subtle ml-2">
-													{email.date ? formatListDate(email.date) : ""}
-												</span>
-											</div>
-
-											{/* Row 2: Mailbox badge + sender + snippet */}
-											<div className="flex items-center gap-2 mt-1 min-w-0 pl-4">
-												{/* Mailbox badge */}
-												<span className={`shrink-0 text-[10px] font-medium px-2 py-0.5 rounded text-white max-w-[200px] truncate ${badgeColor}`}>
-													{mailboxLabel}
-												</span>
-
-												{/* Sender */}
-												<span className="shrink-0 text-xs text-kumo-subtle truncate max-w-[140px]">
-													{email.sender}
-												</span>
-
-												{/* Snippet */}
-												{snippet && (
-													<>
-														<span className="shrink-0 text-kumo-line">·</span>
-														<span className="flex-1 min-w-0 truncate text-xs text-kumo-subtle">
-															{snippet}
-														</span>
-													</>
-												)}
-											</div>
-										</button>
-									);
-								})}
+								{emails.map((email) => (
+									<AllInboxRow
+										key={email.id}
+										email={email}
+										badgeColor={mailboxColor(email.mailboxId, mailboxIds)}
+										mailboxLabel={email.mailboxId.split("@")[1] ?? email.mailboxId}
+										onClick={handleEmailClick}
+									/>
+								))}
 							</div>
 
 							{totalPages > 1 && (

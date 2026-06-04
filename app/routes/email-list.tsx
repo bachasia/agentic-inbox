@@ -17,7 +17,7 @@ import {
 	TrayIcon,
 } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router";
 import { Folders } from "shared/folders";
 import { formatListDate } from "shared/dates";
@@ -143,6 +143,184 @@ function FolderEmptyState({
 	);
 }
 
+// Pure helpers lifted to module scope — no closure over component state
+function hasUnread(email: Email): boolean {
+	if (email.thread_unread_count !== undefined) return email.thread_unread_count > 0;
+	return !email.read;
+}
+
+function formatParticipants(email: Email): string {
+	if (email.participants) {
+		const names = email.participants
+			.split(",")
+			.map((p) => p.trim().split("@")[0])
+			.filter((name, idx, arr) => arr.indexOf(name) === idx);
+		if (names.length <= 3) return names.join(", ");
+		return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
+	}
+	return email.sender.split("@")[0];
+}
+
+interface EmailRowProps {
+	email: Email;
+	isSelected: boolean;
+	isPanelOpen: boolean;
+	onRowClick: (email: Email) => void;
+	onToggleStar: (e: React.MouseEvent, email: Email) => void;
+	onMarkRead: (emailId: string, read: boolean) => void;
+	onDelete: (e: React.MouseEvent, emailId: string, isRowSelected: boolean) => void;
+	onSwipeArchive: (emailId: string) => void;
+	onSwipeTrash: (emailId: string) => void;
+}
+
+// Memoized row: skips re-render when props haven't changed.
+// Combined with stable useCallback handlers in the parent, only the
+// 1-2 rows whose isSelected changes actually re-render on email click.
+const EmailRow = memo(function EmailRow({
+	email,
+	isSelected,
+	isPanelOpen,
+	onRowClick,
+	onToggleStar,
+	onMarkRead,
+	onDelete,
+	onSwipeArchive,
+	onSwipeTrash,
+}: EmailRowProps) {
+	const snippet = getSnippetText(email.snippet);
+	return (
+		<SwipeableEmailRow
+			onSwipeRight={() => onSwipeArchive(email.id)}
+			onSwipeLeft={() => onSwipeTrash(email.id)}
+		>
+			<div
+				role="button"
+				tabIndex={0}
+				onClick={() => onRowClick(email)}
+				onKeyDown={(e) => {
+					if (e.key === "Enter" || e.key === " ") {
+						e.preventDefault();
+						onRowClick(email);
+					}
+				}}
+				className={`group flex items-stretch gap-0 w-full text-left cursor-pointer transition-colors border-b border-kumo-line ${
+					isSelected ? "bg-kumo-tint" : "hover:bg-kumo-tint"
+				}`}
+			>
+				{email.triage_priority && email.triage_priority >= 3 && (
+					<div className={`w-[3px] shrink-0 self-stretch ${email.triage_priority >= 4 ? "bg-red-500" : "bg-orange-400"}`} />
+				)}
+				<div className={`flex items-center gap-3 flex-1 min-w-0 px-4 py-2.5 md:py-3 ${
+					isPanelOpen ? "md:px-4 md:py-2.5" : "md:px-6"
+				}`}>
+					<div className="w-2.5 shrink-0 flex justify-center">
+						{hasUnread(email) && (
+							<div className="h-2 w-2 rounded-full bg-kumo-brand" />
+						)}
+					</div>
+					<button
+						type="button"
+						className="shrink-0 p-0.5 bg-transparent border-0 cursor-pointer"
+						onClick={(e) => {
+							e.stopPropagation();
+							onToggleStar(e, email);
+						}}
+					>
+						<StarIcon
+							size={16}
+							weight={email.starred ? "fill" : "regular"}
+							className={email.starred ? "text-kumo-warning" : "text-kumo-subtle hover:text-kumo-warning"}
+						/>
+					</button>
+					<div className="min-w-0 flex-1">
+						<div className="flex items-center gap-2">
+							<span className={`truncate min-w-0 text-sm ${hasUnread(email) ? "font-semibold text-kumo-default" : "text-kumo-strong"}`}>
+								{formatParticipants(email)}
+							</span>
+							{(email.thread_count ?? 1) > 1 && (
+								<span className="shrink-0 text-xs text-kumo-subtle bg-kumo-fill rounded-full px-1.5 py-0.5 font-medium">
+									{email.thread_count}
+								</span>
+							)}
+							{email.has_draft && (
+								<span className="shrink-0 text-xs text-kumo-destructive font-medium">Draft</span>
+							)}
+							{email.needs_reply && !email.has_draft && (
+								<Tooltip content="Needs reply" asChild>
+									<span className="shrink-0 text-kumo-warning">
+										<ArrowBendUpLeftIcon size={14} weight="bold" />
+									</span>
+								</Tooltip>
+							)}
+							<span className="text-sm text-kumo-subtle shrink-0 ml-auto flex items-center gap-1.5">
+								{email.triage_category && (
+									<span className="text-xs bg-kumo-fill rounded px-1.5 py-0.5 capitalize hidden sm:inline">
+										{email.triage_category}
+									</span>
+								)}
+								{formatListDate(email.date)}
+							</span>
+						</div>
+						<div className="truncate text-sm mt-0.5">
+							<span className={hasUnread(email) ? "font-medium text-kumo-default" : "text-kumo-subtle"}>
+								{email.subject}
+							</span>
+							{snippet && (
+								<span className="text-kumo-subtle font-normal">{" "}&mdash; {snippet}</span>
+							)}
+						</div>
+						{email.triage_summary && (email.thread_count ?? 1) >= 3 && (
+							<div className="text-xs text-kumo-subtle italic mt-0.5 truncate">{email.triage_summary}</div>
+						)}
+						{email.labels && email.labels.length > 0 && (
+							<div className="flex items-center gap-1 mt-1 flex-wrap">
+								{email.labels.map((label) => (
+									<LabelBadge key={label.id} label={label} size="xs" />
+								))}
+							</div>
+						)}
+						{email.snooze_until && (
+							<div className="mt-1 text-xs text-kumo-accent">
+								Snoozed until {new Date(email.snooze_until).toLocaleString()}
+							</div>
+						)}
+						{email.scheduled_send_at && (
+							<div className="mt-1 text-xs text-kumo-subtle">
+								Sends at {new Date(email.scheduled_send_at).toLocaleString()}
+							</div>
+						)}
+					</div>
+					<div className="hidden group-hover:flex items-center shrink-0">
+						<Tooltip content={email.read ? "Mark unread" : "Mark read"} asChild>
+							<Button
+								variant="ghost"
+								shape="square"
+								size="sm"
+								icon={email.read ? <EnvelopeSimpleIcon size={14} /> : <EnvelopeOpenIcon size={14} />}
+								onClick={(e) => {
+									e.stopPropagation();
+									onMarkRead(email.id, !email.read);
+								}}
+								aria-label={email.read ? "Mark unread" : "Mark read"}
+							/>
+						</Tooltip>
+						<Tooltip content="Delete" asChild>
+							<Button
+								variant="ghost"
+								shape="square"
+								size="sm"
+								icon={<TrashIcon size={14} />}
+								onClick={(e) => onDelete(e, email.id, isSelected)}
+								aria-label="Delete"
+							/>
+						</Tooltip>
+					</div>
+				</div>
+			</div>
+		</SwipeableEmailRow>
+	);
+});
+
 export default function EmailListRoute() {
 	const { mailboxId, folder } = useParams<{
 		mailboxId: string;
@@ -193,40 +371,59 @@ export default function EmailListRoute() {
 
 	const isPanelOpen = selectedEmailId !== null || isComposing;
 
-	// Track folder identity to detect folder changes vs page changes
 	const prevFolderRef = useRef<string | undefined>(undefined);
 
 	useEffect(() => {
 		const folderChanged = prevFolderRef.current !== `${mailboxId}/${folder}`;
 		prevFolderRef.current = `${mailboxId}/${folder}`;
-
 		if (folderChanged) {
 			closePanel();
 			setPage(1);
 		}
 	}, [mailboxId, folder, closePanel]);
 
-	const toggleStar = (e: React.MouseEvent, email: Email) => {
+	// Stable callbacks — won't change unless mailboxId or mutation refs change,
+	// ensuring React.memo on EmailRow can bail out effectively.
+	const handleRowClick = useCallback((email: Email) => {
+		selectEmail(email.id);
+		if (mailboxId && hasUnread(email)) {
+			if (email.thread_id && email.thread_count && email.thread_count > 1) {
+				markThreadRead.mutate({ mailboxId, threadId: email.thread_id });
+			} else {
+				updateEmail.mutate({ mailboxId, id: email.id, data: { read: true } });
+			}
+		}
+	}, [selectEmail, mailboxId, markThreadRead, updateEmail]);
+
+	const handleToggleStar = useCallback((e: React.MouseEvent, email: Email) => {
 		e.preventDefault();
 		e.stopPropagation();
 		if (mailboxId)
-			updateEmail.mutate({
-				mailboxId,
-				id: email.id,
-				data: { starred: !email.starred },
-			});
-	};
+			updateEmail.mutate({ mailboxId, id: email.id, data: { starred: !email.starred } });
+	}, [mailboxId, updateEmail]);
 
-	const handleDelete = (e: React.MouseEvent, emailId: string) => {
+	const handleMarkRead = useCallback((emailId: string, read: boolean) => {
+		if (mailboxId) updateEmail.mutate({ mailboxId, id: emailId, data: { read } });
+	}, [mailboxId, updateEmail]);
+
+	// isRowSelected is passed by the row so this callback doesn't close over selectedEmailId
+	const handleDelete = useCallback((e: React.MouseEvent, emailId: string, isRowSelected: boolean) => {
 		e.preventDefault();
 		e.stopPropagation();
-		if (mailboxId) {
-			const confirmed = window.confirm("Are you sure you want to delete this email?");
-			if (!confirmed) return;
-			deleteEmail.mutate({ mailboxId, id: emailId });
-			if (selectedEmailId === emailId) closePanel();
-		}
-	};
+		if (!mailboxId) return;
+		if (!window.confirm("Are you sure you want to delete this email?")) return;
+		deleteEmail.mutate({ mailboxId, id: emailId });
+		if (isRowSelected) closePanel();
+	}, [mailboxId, deleteEmail, closePanel]);
+
+	const handleSwipeArchive = useCallback((emailId: string) => {
+		if (mailboxId) moveEmail.mutate({ mailboxId, id: emailId, folderId: "archive" });
+	}, [mailboxId, moveEmail]);
+
+	const handleSwipeTrash = useCallback((emailId: string) => {
+		if (mailboxId && window.confirm("Delete this email?"))
+			moveEmail.mutate({ mailboxId, id: emailId, folderId: "trash" });
+	}, [mailboxId, moveEmail]);
 
 	const handleRefresh = () => {
 		if (mailboxId) {
@@ -235,44 +432,6 @@ export default function EmailListRoute() {
 				queryKey: queryKeys.folders.list(mailboxId),
 			});
 		}
-	};
-
-	// Thread-aware helpers
-	const hasUnread = (email: Email): boolean => {
-		if (email.thread_unread_count !== undefined) {
-			return email.thread_unread_count > 0;
-		}
-		return !email.read;
-	};
-
-	const handleRowClick = (email: Email) => {
-		selectEmail(email.id);
-		if (mailboxId && hasUnread(email)) {
-			if (email.thread_id && email.thread_count && email.thread_count > 1) {
-				markThreadRead.mutate({
-					mailboxId,
-					threadId: email.thread_id,
-				});
-			} else {
-				updateEmail.mutate({
-					mailboxId,
-					id: email.id,
-					data: { read: true },
-				});
-			}
-		}
-	};
-
-	const formatParticipants = (email: Email): string => {
-		if (email.participants) {
-			const names = email.participants
-				.split(",")
-				.map((p) => p.trim().split("@")[0])
-				.filter((name, idx, arr) => arr.indexOf(name) === idx);
-			if (names.length <= 3) return names.join(", ");
-			return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
-		}
-		return email.sender.split("@")[0];
 	};
 
 	return (
@@ -320,175 +479,20 @@ export default function EmailListRoute() {
 					<EmailListSkeleton />
 				) : emails.length > 0 ? (
 						<div>
-							{emails.map((email) => {
-								const isSelected = selectedEmailId === email.id;
-								const snippet = getSnippetText(email.snippet);
-								return (
-									<SwipeableEmailRow
-										key={email.id}
-										onSwipeRight={() => mailboxId && moveEmail.mutate({ mailboxId, id: email.id, folderId: "archive" })}
-										onSwipeLeft={() => {
-											if (mailboxId && window.confirm("Delete this email?")) {
-												moveEmail.mutate({ mailboxId, id: email.id, folderId: "trash" });
-											}
-										}}
-									>
-									<div
-										role="button"
-										tabIndex={0}
-										onClick={() => handleRowClick(email)}
-										onKeyDown={(e) => {
-											if (e.key === "Enter" || e.key === " ") {
-												e.preventDefault();
-												handleRowClick(email);
-											}
-										}}
-										className={`group flex items-stretch gap-0 w-full text-left cursor-pointer transition-colors border-b border-kumo-line ${
-											isSelected ? "bg-kumo-tint" : "hover:bg-kumo-tint"
-										}`}
-									>
-									{/* Priority band: 3px left border for priority 3+ */}
-									{email.triage_priority && email.triage_priority >= 3 && (
-										<div className={`w-[3px] shrink-0 self-stretch ${email.triage_priority >= 4 ? "bg-red-500" : "bg-orange-400"}`} />
-									)}
-									<div className={`flex items-center gap-3 flex-1 min-w-0 px-4 py-2.5 md:py-3 ${
-										isPanelOpen ? "md:px-4 md:py-2.5" : "md:px-6"
-									}`}>
-										{/* Unread dot */}
-										<div className="w-2.5 shrink-0 flex justify-center">
-											{hasUnread(email) && (
-												<div className="h-2 w-2 rounded-full bg-kumo-brand" />
-											)}
-										</div>
-
-										{/* Star */}
-										<button
-											type="button"
-											className="shrink-0 p-0.5 bg-transparent border-0 cursor-pointer"
-											onClick={(e) => {
-												e.stopPropagation();
-												toggleStar(e, email);
-											}}
-										>
-											<StarIcon
-												size={16}
-												weight={email.starred ? "fill" : "regular"}
-												className={
-													email.starred
-														? "text-kumo-warning"
-														: "text-kumo-subtle hover:text-kumo-warning"
-												}
-											/>
-										</button>
-
-										{/* Content */}
-										<div className="min-w-0 flex-1">
-											<div className="flex items-center gap-2">
-												<span
-													className={`truncate min-w-0 text-sm ${hasUnread(email) ? "font-semibold text-kumo-default" : "text-kumo-strong"}`}
-												>
-													{formatParticipants(email)}
-												</span>
-												{(email.thread_count ?? 1) > 1 && (
-													<span className="shrink-0 text-xs text-kumo-subtle bg-kumo-fill rounded-full px-1.5 py-0.5 font-medium">
-														{email.thread_count}
-													</span>
-												)}
-												{email.has_draft && (
-													<span className="shrink-0 text-xs text-kumo-destructive font-medium">
-														Draft
-													</span>
-												)}
-												{email.needs_reply && !email.has_draft && (
-													<Tooltip content="Needs reply" asChild>
-														<span className="shrink-0 text-kumo-warning">
-															<ArrowBendUpLeftIcon size={14} weight="bold" />
-														</span>
-													</Tooltip>
-												)}
-												<span className="text-sm text-kumo-subtle shrink-0 ml-auto flex items-center gap-1.5">
-													{email.triage_category && (
-														<span className="text-xs bg-kumo-fill rounded px-1.5 py-0.5 capitalize hidden sm:inline">
-															{email.triage_category}
-														</span>
-													)}
-													{formatListDate(email.date)}
-												</span>
-											</div>
-											<div className="truncate text-sm mt-0.5">
-												<span
-													className={hasUnread(email) ? "font-medium text-kumo-default" : "text-kumo-subtle"}
-												>
-													{email.subject}
-												</span>
-											{snippet && (
-												<span className="text-kumo-subtle font-normal">
-													{" "}&mdash; {snippet}
-												</span>
-											)}
-										</div>
-									{/* Thread summary */}
-									{email.triage_summary && (email.thread_count ?? 1) >= 3 && (
-										<div className="text-xs text-kumo-subtle italic mt-0.5 truncate">
-											{email.triage_summary}
-										</div>
-									)}
-									{/* Label badges */}
-									{email.labels && email.labels.length > 0 && (
-										<div className="flex items-center gap-1 mt-1 flex-wrap">
-											{email.labels.map((label) => (
-												<LabelBadge key={label.id} label={label} size="xs" />
-											))}
-										</div>
-									)}
-									{email.snooze_until && (
-										<div className="mt-1 text-xs text-kumo-accent">
-											Snoozed until {new Date(email.snooze_until).toLocaleString()}
-										</div>
-									)}
-									{email.scheduled_send_at && (
-										<div className="mt-1 text-xs text-kumo-subtle">
-											Sends at {new Date(email.scheduled_send_at).toLocaleString()}
-										</div>
-									)}
-								</div>
-
-										{/* Hover actions */}
-										<div className="hidden group-hover:flex items-center shrink-0">
-											<Tooltip content={email.read ? "Mark unread" : "Mark read"} asChild>
-												<Button
-													variant="ghost"
-													shape="square"
-													size="sm"
-													icon={email.read ? <EnvelopeSimpleIcon size={14} /> : <EnvelopeOpenIcon size={14} />}
-													onClick={(e) => {
-														e.stopPropagation();
-														if (mailboxId)
-															updateEmail.mutate({
-																mailboxId,
-																id: email.id,
-																data: { read: !email.read },
-															});
-													}}
-													aria-label={email.read ? "Mark unread" : "Mark read"}
-												/>
-											</Tooltip>
-											<Tooltip content="Delete" asChild>
-												<Button
-													variant="ghost"
-													shape="square"
-													size="sm"
-													icon={<TrashIcon size={14} />}
-													onClick={(e) => handleDelete(e, email.id)}
-													aria-label="Delete"
-												/>
-											</Tooltip>
-										</div>
-									</div>{/* end inner flex row */}
-									</div>
-									</SwipeableEmailRow>
-								);
-							})}
+							{emails.map((email) => (
+								<EmailRow
+									key={email.id}
+									email={email}
+									isSelected={selectedEmailId === email.id}
+									isPanelOpen={isPanelOpen}
+									onRowClick={handleRowClick}
+									onToggleStar={handleToggleStar}
+									onMarkRead={handleMarkRead}
+									onDelete={handleDelete}
+									onSwipeArchive={handleSwipeArchive}
+									onSwipeTrash={handleSwipeTrash}
+								/>
+							))}
 						</div>
 					) : (
 						<FolderEmptyState

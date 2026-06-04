@@ -92,16 +92,20 @@ export default function WooCommerceOrdersPanel({ mailboxId, contactEmail }: WooC
 
 	if (isLoading) {
 		return (
-			<div className="rounded-lg border border-kumo-line bg-kumo-subtle p-3 text-xs text-kumo-muted">
-				Loading orders…
+			<div className="px-5 py-3 border-b border-kumo-line">
+				<div className="rounded-lg border border-kumo-line bg-kumo-subtle p-3 text-xs text-kumo-muted">
+					Loading orders…
+				</div>
 			</div>
 		);
 	}
 
 	if (isError) {
 		return (
-			<div className="rounded-lg border border-kumo-line bg-kumo-subtle p-3 text-xs text-red-500">
-				Failed to load orders
+			<div className="px-5 py-3 border-b border-kumo-line">
+				<div className="rounded-lg border border-kumo-line bg-kumo-subtle p-3 text-xs text-red-500">
+					Failed to load orders
+				</div>
 			</div>
 		);
 	}
@@ -112,24 +116,26 @@ export default function WooCommerceOrdersPanel({ mailboxId, contactEmail }: WooC
 	const visible = showAll ? orders : orders.slice(0, INITIAL_SHOWN);
 
 	return (
-		<div className="rounded-lg border border-kumo-line bg-kumo-subtle p-3 space-y-2">
-			<div className="flex items-center justify-between">
-				<span className="text-xs font-medium text-kumo-default">Orders ({orders.length})</span>
+		<div className="px-5 py-3 border-b border-kumo-line">
+			<div className="rounded-lg border border-kumo-line bg-kumo-subtle p-3 space-y-2">
+				<div className="flex items-center justify-between">
+					<span className="text-xs font-medium text-kumo-default">Orders ({orders.length})</span>
+				</div>
+				<div className="space-y-2">
+					{visible.map((order) => (
+						<OrderCard key={order.id} order={order} />
+					))}
+				</div>
+				{orders.length > INITIAL_SHOWN && (
+					<button
+						type="button"
+						onClick={() => setShowAll((v) => !v)}
+						className="text-xs text-kumo-accent hover:underline"
+					>
+						{showAll ? "Show less" : `Show all ${orders.length} orders`}
+					</button>
+				)}
 			</div>
-			<div className="space-y-2">
-				{visible.map((order) => (
-					<OrderCard key={order.id} order={order} />
-				))}
-			</div>
-			{orders.length > INITIAL_SHOWN && (
-				<button
-					type="button"
-					onClick={() => setShowAll((v) => !v)}
-					className="text-xs text-kumo-accent hover:underline"
-				>
-					{showAll ? "Show less" : `Show all ${orders.length} orders`}
-				</button>
-			)}
 		</div>
 	);
 }

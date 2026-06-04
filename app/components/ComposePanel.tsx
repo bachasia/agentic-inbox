@@ -119,12 +119,11 @@ export default function ComposePanel() {
 						</div>
 					)}
 
-					<div className="space-y-3">
-						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-kumo-subtle w-14 shrink-0">
-								To
-							</label>
-							<div className="flex-1 flex items-center gap-2 min-w-0">
+					<div className="border border-kumo-line rounded-md divide-y divide-kumo-line">
+						{/* To row */}
+						<div className="flex items-center gap-2 px-3 py-2">
+							<span className="text-sm font-medium text-kumo-subtle shrink-0 w-12">To</span>
+							<div className="flex-1 min-w-0">
 								{mailboxId ? (
 									<ContactAutocomplete
 										label=""
@@ -134,71 +133,64 @@ export default function ComposePanel() {
 										placeholder="recipient@example.com"
 									/>
 								) : (
-									<Input
+									<input
 										type="text"
 										placeholder="recipient@example.com"
-										size="sm"
+										className="w-full text-sm bg-transparent outline-none text-kumo-default placeholder:text-kumo-muted"
 										value={to}
 										onChange={(e) => setTo(e.target.value)}
 										required
 									/>
 								)}
-								{!showCcBcc && (
-									<button
-										type="button"
-										onClick={() => setShowCcBcc(true)}
-										className="shrink-0 text-xs text-kumo-link hover:text-kumo-link-hover font-medium"
-									>
-										CC / BCC
-									</button>
-								)}
 							</div>
+							{!showCcBcc && (
+								<button
+									type="button"
+									onClick={() => setShowCcBcc(true)}
+									className="shrink-0 text-xs text-kumo-link hover:text-kumo-link-hover font-medium"
+								>
+									CC / BCC
+								</button>
+							)}
 						</div>
 
 						{showCcBcc && (
-							<div className="flex items-center gap-2">
-								<label className="text-sm font-medium text-kumo-subtle w-14 shrink-0">
-									CC
-								</label>
-								<div className="flex-1">
+							<div className="flex items-center gap-2 px-3 py-2">
+								<span className="text-sm font-medium text-kumo-subtle shrink-0 w-12">CC</span>
+								<div className="flex-1 min-w-0">
 									{mailboxId ? (
 										<ContactAutocomplete label="" value={cc} onChange={setCc} mailboxId={mailboxId} placeholder="Separate multiple addresses with commas" />
 									) : (
-										<Input type="text" size="sm" value={cc} onChange={(e) => setCc(e.target.value)} placeholder="Separate multiple addresses with commas" />
+										<input type="text" className="w-full text-sm bg-transparent outline-none text-kumo-default placeholder:text-kumo-muted" value={cc} onChange={(e) => setCc(e.target.value)} placeholder="Separate multiple addresses with commas" />
 									)}
 								</div>
 							</div>
 						)}
 
 						{showCcBcc && (
-							<div className="flex items-center gap-2">
-								<label className="text-sm font-medium text-kumo-subtle w-14 shrink-0">
-									BCC
-								</label>
-								<div className="flex-1">
+							<div className="flex items-center gap-2 px-3 py-2">
+								<span className="text-sm font-medium text-kumo-subtle shrink-0 w-12">BCC</span>
+								<div className="flex-1 min-w-0">
 									{mailboxId ? (
 										<ContactAutocomplete label="" value={bcc} onChange={setBcc} mailboxId={mailboxId} placeholder="Separate multiple addresses with commas" />
 									) : (
-										<Input type="text" size="sm" value={bcc} onChange={(e) => setBcc(e.target.value)} placeholder="Separate multiple addresses with commas" />
+										<input type="text" className="w-full text-sm bg-transparent outline-none text-kumo-default placeholder:text-kumo-muted" value={bcc} onChange={(e) => setBcc(e.target.value)} placeholder="Separate multiple addresses with commas" />
 									)}
 								</div>
 							</div>
 						)}
 
-						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-kumo-subtle w-14 shrink-0">
-								Subject
-							</label>
-							<div className="flex-1">
-								<Input
-									type="text"
-									placeholder="Email subject"
-									size="sm"
-									value={subject}
-									onChange={(e) => setSubject(e.target.value)}
-									required
-								/>
-							</div>
+						{/* Subject row */}
+						<div className="flex items-center gap-2 px-3 py-2">
+							<span className="text-sm font-medium text-kumo-subtle shrink-0 w-12">Subject</span>
+							<input
+								type="text"
+								placeholder="Email subject"
+								className="flex-1 text-sm bg-transparent outline-none text-kumo-default placeholder:text-kumo-muted"
+								value={subject}
+								onChange={(e) => setSubject(e.target.value)}
+								required
+							/>
 						</div>
 					</div>
 

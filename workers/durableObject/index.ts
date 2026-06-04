@@ -4,7 +4,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { drizzle } from "drizzle-orm/durable-sqlite";
-import { eq, and, or, asc, desc, sql } from "drizzle-orm";
+import { eq, and, or, asc, desc, sql, inArray } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import * as schema from "../db/schema";
 import { Folders } from "../../shared/folders";
@@ -245,6 +245,7 @@ export class MailboxDO extends DurableObject<Env> {
 			folder,
 			page = 1,
 			limit: rawLimit = 25,
+			label_id,
 		} = options;
 		const limit = Math.min(Math.max(rawLimit, 1), 100);
 
@@ -265,6 +266,7 @@ export class MailboxDO extends DurableObject<Env> {
 		//   2. Fallback: group by normalized subject (strips Re:/Fwd:/FW: prefixes)
 		//      for legacy emails that lack threading headers (thread_id IS NULL).
 		const isDraftFolder = folder === Folders.DRAFT;
+		const labelCond = label_id ? `AND id IN (SELECT email_id FROM email_labels WHERE label_id = '${label_id.replace(/'/g, "''")}')` : "";
 
 		if (isDraftFolder) {
 			const result = this.ctx.storage.sql.exec(
@@ -274,6 +276,7 @@ export class MailboxDO extends DurableObject<Env> {
 						COALESCE(in_reply_to, id) as draft_group_key
 					FROM emails
 					WHERE folder_id = (SELECT id FROM folders WHERE name = ?1 OR id = ?1 LIMIT 1)
+					${labelCond}
 				),
 				draft_stats AS (
 					SELECT
@@ -333,6 +336,7 @@ export class MailboxDO extends DurableObject<Env> {
 				FROM emails
 				WHERE folder_id = (SELECT id FROM folders WHERE name = ?1 OR id = ?1 LIMIT 1)
 				${snoozeCond}
+				${labelCond}
 			),
 			thread_to_conversation AS (
 				SELECT
@@ -952,6 +956,27 @@ export class MailboxDO extends DurableObject<Env> {
 			.from(schema.emailLabels)
 			.innerJoin(schema.labels, eq(schema.emailLabels.label_id, schema.labels.id))
 			.where(eq(schema.emailLabels.email_id, emailId)).all();
+	}
+
+	async getLabelsForEmails(emailIds: string[]): Promise<Record<string, { id: string; name: string; color: string }[]>> {
+		if (emailIds.length === 0) return {};
+		const rows = this.db.select({
+			emailId: schema.emailLabels.email_id,
+			id: schema.labels.id,
+			name: schema.labels.name,
+			color: schema.labels.color,
+		})
+			.from(schema.emailLabels)
+			.innerJoin(schema.labels, eq(schema.emailLabels.label_id, schema.labels.id))
+			.where(inArray(schema.emailLabels.email_id, emailIds))
+			.all();
+
+		const map: Record<string, { id: string; name: string; color: string }[]> = {};
+		for (const row of rows) {
+			if (!map[row.emailId]) map[row.emailId] = [];
+			map[row.emailId].push({ id: row.id, name: row.name, color: row.color });
+		}
+		return map;
 	}
 
 	// ── Alarm queue ───────────────────────────────────────────────────
@@ -1613,17 +1638,18 @@ export class MailboxDO extends DurableObject<Env> {
 		}
 	}
 
-	async evaluateAndApplyRules(emailId: string, mailboxId: string, env: Env): Promise<{ appliedTypes: string[]; pendingWebhooks: Array<{ url: string; payload: Record<string, unknown> }> }> {
+	async evaluateAndApplyRules(emailId: string, mailboxId: string, env: Env): Promise<{ appliedTypes: string[]; pendingWebhooks: Array<{ url: string; payload: Record<string, unknown> }>; movedToFolder: string | null }> {
 		const emailRow = this.db.select({
 			sender: schema.emails.sender, recipient: schema.emails.recipient,
 			subject: schema.emails.subject, body: schema.emails.body,
 			triage_category: schema.emails.triage_category, triage_priority: schema.emails.triage_priority,
 		}).from(schema.emails).where(eq(schema.emails.id, emailId)).get();
-		if (!emailRow) return { appliedTypes: [], pendingWebhooks: [] };
+		if (!emailRow) return { appliedTypes: [], pendingWebhooks: [], movedToFolder: null };
 
 		const rules = await this.listRules(true);
 		const actions = evaluateAllRules(emailRow as any, rules as any);
 		const pendingWebhooks: Array<{ url: string; payload: Record<string, unknown> }> = [];
+		let movedToFolder: string | null = null;
 
 		for (const action of actions) {
 			try {
@@ -1632,7 +1658,10 @@ export class MailboxDO extends DurableObject<Env> {
 						if (action.params?.labelId) await this.applyLabel(emailId, action.params.labelId);
 						break;
 					case "move":
-						if (action.params?.folder) await this.moveEmail(emailId, action.params.folder);
+						if (action.params?.folder) {
+							await this.moveEmail(emailId, action.params.folder);
+							movedToFolder = action.params.folder;
+						}
 						break;
 					case "archive":
 						await this.moveEmail(emailId, "archive");
@@ -1664,7 +1693,7 @@ export class MailboxDO extends DurableObject<Env> {
 			}
 		}
 
-		return { appliedTypes: actions.map((a) => a.type), pendingWebhooks };
+		return { appliedTypes: actions.map((a) => a.type), pendingWebhooks, movedToFolder };
 	}
 
 	async createEmail(

@@ -21,7 +21,7 @@ import {
 import { useMemo, useState } from "react";
 import { NavLink, useNavigate, useParams } from "react-router";
 import { Folders, SYSTEM_FOLDER_IDS } from "shared/folders";
-import { useCreateFolder, useFolders } from "~/queries/folders";
+import { useCreateFolder, useDeleteFolder, useFolders } from "~/queries/folders";
 import { useLabels } from "~/queries/labels";
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
@@ -83,6 +83,7 @@ export default function Sidebar() {
 	const navigate = useNavigate();
 	const { data: folders = [] } = useFolders(mailboxId);
 	const createFolderMutation = useCreateFolder();
+	const deleteFolderMutation = useDeleteFolder();
 	const { startCompose, closeSidebar } = useUIStore();
 	const { data: currentMailbox } = useMailbox(mailboxId);
 	const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
@@ -108,6 +109,12 @@ export default function Sidebar() {
 			setNewFolderName("");
 			setIsCreateFolderOpen(false);
 		}
+	};
+
+	const handleDeleteFolder = (folderId: string, folderName: string) => {
+		if (!mailboxId) return;
+		if (!window.confirm(`Delete folder "${folderName}"?`)) return;
+		deleteFolderMutation.mutate({ mailboxId, id: folderId });
 	};
 
 	const displayName = useMemo(() => {
@@ -202,14 +209,25 @@ export default function Sidebar() {
 							</Tooltip>
 						</div>
 						{customFolders.map((folder) => (
-							<FolderLink
-								key={folder.id}
-								to={`/mailbox/${mailboxId}/emails/${folder.id}`}
-								icon={<FolderIcon size={18} />}
-								label={folder.name}
-								unreadCount={folder.unreadCount}
-								onClick={handleNavClick}
-							/>
+							<div key={folder.id} className="group relative flex items-center">
+								<FolderLink
+									to={`/mailbox/${mailboxId}/emails/${folder.id}`}
+									icon={<FolderIcon size={18} />}
+									label={folder.name}
+									unreadCount={folder.unreadCount}
+									onClick={handleNavClick}
+								/>
+								<Tooltip content="Delete folder" side="right" asChild>
+									<button
+										type="button"
+										onClick={() => handleDeleteFolder(folder.id, folder.name)}
+										className="absolute right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-kumo-overlay text-kumo-subtle hover:text-kumo-danger"
+										aria-label={`Delete ${folder.name}`}
+									>
+										<TrashIcon size={14} />
+									</button>
+								</Tooltip>
+							</div>
 						))}
 					</div>
 				)}

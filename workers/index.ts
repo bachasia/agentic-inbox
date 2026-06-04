@@ -282,16 +282,26 @@ app.get("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 	const stub = c.var.mailboxStub;
 
 	if (threaded && folder) {
-		const emails = await (stub as any).getThreadedEmails({ folder, page, limit, label_id });
-		const totalCount = await (stub as any).countThreadedEmails(folder);
-		return c.json({ emails, totalCount });
+		// Parallelize: list + count don't depend on each other
+		const [emails, totalCount] = await Promise.all([
+			(stub as any).getThreadedEmails({ folder, page, limit, label_id }),
+			(stub as any).countThreadedEmails(folder),
+		]);
+		const labelsMap = await (stub as any).getLabelsForEmails(emails.map((e: any) => e.id));
+		return c.json({ emails: emails.map((e: any) => ({ ...e, labels: labelsMap[e.id] ?? [] })), totalCount });
+	}
+	if (folder) {
+		// Parallelize: list + count don't depend on each other
+		const [emails, totalCount] = await Promise.all([
+			stub.getEmails({ folder, thread_id, page, limit, sortColumn, sortDirection, label_id } as any),
+			stub.countEmails({ folder, thread_id }),
+		]);
+		const labelsMap = await (stub as any).getLabelsForEmails(emails.map((e: any) => e.id));
+		return c.json({ emails: emails.map((e: any) => ({ ...e, labels: labelsMap[e.id] ?? [] })), totalCount });
 	}
 	const emails = await stub.getEmails({ folder, thread_id, page, limit, sortColumn, sortDirection, label_id } as any);
-	if (folder) {
-		const totalCount = await stub.countEmails({ folder, thread_id });
-		return c.json({ emails, totalCount });
-	}
-	return c.json(emails);
+	const labelsMap = await (stub as any).getLabelsForEmails(emails.map((e: any) => e.id));
+	return c.json(emails.map((e: any) => ({ ...e, labels: labelsMap[e.id] ?? [] })));
 });
 
 app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
@@ -1018,53 +1028,70 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 		);
 	}
 
-	// Triage + thread summarization (fail-open: email still arrives if this fails)
+	// Triage → rules → notification, sequentially so spam emails skip notification.
 	ctx.waitUntil((async () => {
+		let landedInSpam = false;
+
+		// Triage + thread summarization (fail-open)
 		try {
 			const triage = await triageEmail(env.AI, {
 				subject: parsedEmail.subject || "",
 				body: parsedEmail.html || parsedEmail.text || "",
 				sender: senderAddr,
 			});
-			if (!triage) return;
-
-			await (stub as any).setEmailTriage(messageId, triage);
-
-			const labelId = await (stub as any).ensureSystemLabel(triage.category);
-			if (labelId) {
-				await (stub as any).applyLabel(messageId, labelId);
-			}
-
-			if (triage.category === "spam" && triage.confidence > 0.85) {
-				await stub.moveEmail(messageId, "spam");
-			}
-
-			// Thread summarization for threads with 3+ messages
-			if (threadId && threadId !== messageId) {
-				const threadCount = await (stub as any).countThreadEmails(threadId);
-				if (threadCount >= 3) {
-					const threadEmails = await (stub as any).getThreadEmails(threadId);
-					if (Array.isArray(threadEmails) && threadEmails.length >= 3) {
-						const summary = await summarizeThread(env.AI, threadEmails);
-						if (summary) await (stub as any).setThreadSummary(messageId, summary);
+			if (triage) {
+				await (stub as any).setEmailTriage(messageId, triage);
+				const labelId = await (stub as any).ensureSystemLabel(triage.category);
+				if (labelId) await (stub as any).applyLabel(messageId, labelId);
+				if (triage.category === "spam" && triage.confidence > 0.85) {
+					await stub.moveEmail(messageId, "spam");
+					landedInSpam = true;
+				}
+				// Thread summarization for threads with 3+ messages
+				if (threadId && threadId !== messageId) {
+					const threadCount = await (stub as any).countThreadEmails(threadId);
+					if (threadCount >= 3) {
+						const threadEmails = await (stub as any).getThreadEmails(threadId);
+						if (Array.isArray(threadEmails) && threadEmails.length >= 3) {
+							const summary = await summarizeThread(env.AI, threadEmails);
+							if (summary) await (stub as any).setThreadSummary(messageId, summary);
+						}
 					}
 				}
 			}
 		} catch (e) {
 			logger.error("triage", "Triage failed", { error: e });
 		}
-	})());
 
-	ctx.waitUntil(
-		getEffectiveNotifications(env.BUCKET, mailboxId)
-			.then((n) => notifyNewEmail(n, {
-				sender: (parsedEmail.from?.address || "").toLowerCase(),
-				senderName: parsedEmail.from?.name || undefined,
-				subject: parsedEmail.subject || "(no subject)",
-				mailboxId,
-			}))
-			.catch((e: Error) => logger.error("notifications", "Notification failed", { error: e })),
-	);
+		// Automation rules (fail-open)
+		try {
+			const { pendingWebhooks, movedToFolder } = await (stub as any).evaluateAndApplyRules(messageId, mailboxId, env) as { pendingWebhooks: Array<{ url: string; payload: Record<string, unknown> }>; movedToFolder: string | null };
+			if (movedToFolder === Folders.SPAM) landedInSpam = true;
+			for (const wh of pendingWebhooks) {
+				ctx.waitUntil(
+					fetch(wh.url, {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify(wh.payload),
+					}).catch((e: Error) => logger.error("rules", "Rule webhook failed", { error: e })),
+				);
+			}
+		} catch (e) {
+			logger.error("rules", "Rule evaluation failed", { error: e });
+		}
+
+		// Notify only if email didn't land in spam
+		if (!landedInSpam) {
+			getEffectiveNotifications(env.BUCKET, mailboxId)
+				.then((n) => notifyNewEmail(n, {
+					sender: (parsedEmail.from?.address || "").toLowerCase(),
+					senderName: parsedEmail.from?.name || undefined,
+					subject: parsedEmail.subject || "(no subject)",
+					mailboxId,
+				}))
+				.catch((e: Error) => logger.error("notifications", "Notification failed", { error: e }));
+		}
+	})());
 
 	// Extract action items (fail-open: skip newsletters/notifications/spam)
 	ctx.waitUntil((async () => {
@@ -1105,23 +1132,6 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 		})());
 	}
 
-	// Evaluate automation rules then fire any webhook actions with ctx.waitUntil (fail-open)
-	ctx.waitUntil((async () => {
-		try {
-			const { pendingWebhooks } = await (stub as any).evaluateAndApplyRules(messageId, mailboxId, env) as { pendingWebhooks: Array<{ url: string; payload: Record<string, unknown> }> };
-			for (const wh of pendingWebhooks) {
-				ctx.waitUntil(
-					fetch(wh.url, {
-						method: "POST",
-						headers: { "Content-Type": "application/json" },
-						body: JSON.stringify(wh.payload),
-					}).catch((e: Error) => logger.error("rules", "Rule webhook failed", { error: e })),
-				);
-			}
-		} catch (e) {
-			logger.error("rules", "Rule evaluation failed", { error: e });
-		}
-	})());
 
 	const agentStub = env.EMAIL_AGENT.get(env.EMAIL_AGENT.idFromName(mailboxId));
 	ctx.waitUntil(agentStub.fetch(new Request("https://agents/onNewEmail", {
