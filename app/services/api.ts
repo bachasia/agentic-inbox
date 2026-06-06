@@ -159,6 +159,8 @@ const api = {
 		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/reply`, email),
 	forwardEmail: (mailboxId: string, emailId: string, email: unknown) =>
 		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/forward`, email),
+	aiCraftReply: (mailboxId: string, emailId: string) =>
+		post<{ body: string }>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/ai-craft`),
 
 	// Signature images (used in mailbox settings signature editor)
 	uploadSignatureImage: async (mailboxId: string, file: File): Promise<{ url: string; filename: string }> => {

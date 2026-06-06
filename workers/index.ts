@@ -16,9 +16,11 @@ import {
 	buildThreadingHeaders,
 	listMailboxes,
 	stripHtmlToText,
+	getFullEmail,
+	getFullThread,
 } from "./lib/email-helpers";
 import { SendEmailRequestSchema } from "./lib/schemas";
-import { triageEmail, summarizeThread, extractActionItems, extractContactTopics } from "./lib/ai";
+import { triageEmail, summarizeThread, extractActionItems, extractContactTopics, craftReplyBody } from "./lib/ai";
 import { embedText, upsertEmailEmbedding, searchSimilarEmails, deleteEmailEmbedding } from "./lib/vectorize";
 import { handleReplyEmail, handleForwardEmail } from "./routes/reply-forward";
 import { Folders } from "../shared/folders";
@@ -436,6 +438,38 @@ app.post("/api/v1/mailboxes/:mailboxId/threads/:threadId/read", async (c: AppCon
 
 app.post("/api/v1/mailboxes/:mailboxId/emails/:id/reply", handleReplyEmail);
 app.post("/api/v1/mailboxes/:mailboxId/emails/:id/forward", handleForwardEmail);
+
+// -- AI Craft -------------------------------------------------------
+
+app.post("/api/v1/mailboxes/:mailboxId/emails/:id/ai-craft", async (c: AppContext) => {
+	const id = c.req.param("id")!;
+	const stub = c.var.mailboxStub;
+	try {
+		const email = await getFullEmail(stub, id);
+		if (!email) return c.json({ error: "Email not found" }, 404);
+
+		// Fetch thread context (exclude the target email itself)
+		const threadResult = email.thread_id
+			? await getFullThread(stub, email.thread_id)
+			: null;
+		const threadContext = (threadResult?.messages ?? [])
+			.filter((m) => m.id !== id)
+			.map((m) => ({ sender: m.sender ?? "", body: m.body ?? "" }));
+
+		const body = await craftReplyBody(
+			c.env.AI,
+			{ subject: email.subject ?? "", body: email.body ?? "", sender: email.sender ?? "" },
+			threadContext,
+		);
+
+		if (!body) return c.json({ error: "AI failed to generate reply. Please try again." }, 503);
+
+		return c.json({ body });
+	} catch (e) {
+		logger.error("ai-craft", "handler error", { error: e });
+		return c.json({ error: "Failed to process request. Please try again." }, 500);
+	}
+});
 
 // -- Folders --------------------------------------------------------
 

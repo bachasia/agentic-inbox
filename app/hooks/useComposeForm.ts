@@ -130,21 +130,27 @@ function buildInitialComposeFields(
 	}
 
 	if (mode === "reply") {
+		const replyPreamble = composeOptions.initialBody
+			? `<p>${composeOptions.initialBody.replace(/\n/g, "<br>")}</p><p><br></p>`
+			: `<p><br></p>`;
 		return {
 			...EMPTY_FIELDS,
 			to: original.sender,
 			subject: getPrefixedSubject(original.subject, "Re"),
-			body: `<p><br></p>${sigBlock ? `${sigBlock}<br>` : ""}${buildQuotedReplyBlock(original.date, original.sender, original.body || "")}`,
+			body: `${replyPreamble}${sigBlock ? `${sigBlock}<br>` : ""}${buildQuotedReplyBlock(original.date, original.sender, original.body || "")}`,
 		};
 	}
 
 	if (mode === "reply-all") {
 		const recipients = buildReplyAllFields(original, mailboxEmail?.toLowerCase());
+		const replyPreamble = composeOptions.initialBody
+			? `<p>${composeOptions.initialBody.replace(/\n/g, "<br>")}</p><p><br></p>`
+			: `<p><br></p>`;
 		return {
 			...EMPTY_FIELDS,
 			...recipients,
 			subject: getPrefixedSubject(original.subject, "Re"),
-			body: `<p><br></p>${sigBlock ? `${sigBlock}<br>` : ""}${buildQuotedReplyBlock(original.date, original.sender, original.body || "")}`,
+			body: `${replyPreamble}${sigBlock ? `${sigBlock}<br>` : ""}${buildQuotedReplyBlock(original.date, original.sender, original.body || "")}`,
 		};
 	}
 

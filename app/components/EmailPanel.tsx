@@ -53,6 +53,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const { closePanel, startCompose } = useUIStore();
 	const toastManager = useKumoToastManager();
 	const [isSending, setIsSending] = useState(false);
+	const [isAiCrafting, setIsAiCrafting] = useState(false);
 	const [sourceViewEmail, setSourceViewEmail] = useState<Email | null>(null);
 	const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
 	const [previewImage, setPreviewImage] = useState<{ url: string; filename: string } | null>(null);
@@ -172,6 +173,25 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 		} finally { setIsSending(false); }
 	};
 
+	const handleAiCraft = async () => {
+		if (!mailboxId || !lastReceivedMessage) return;
+		setIsAiCrafting(true);
+		try {
+			const result = await api.aiCraftReply(mailboxId, lastReceivedMessage.id);
+			startCompose({
+				mode: "reply",
+				originalEmail: lastReceivedMessage,
+				initialBody: result.body,
+			});
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : "AI Craft failed. Please try again.";
+			console.error("[ai-craft]", err);
+			toastManager.add({ title: msg, variant: "error" });
+		} finally {
+			setIsAiCrafting(false);
+		}
+	};
+
 	const hasThread = allMessages.length > 1;
 
 	return (
@@ -195,6 +215,8 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 					})
 				}
 				onForward={() => startCompose({ mode: "forward", originalEmail: email })}
+				onAiCraft={handleAiCraft}
+				isAiCrafting={isAiCrafting}
 				onToggleStar={toggleStar}
 				onToggleRead={() => {
 					if (mailboxId) {

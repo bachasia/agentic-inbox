@@ -429,6 +429,57 @@ export async function extractContactTopics(ai: Ai, subjects: string[]): Promise<
 	}
 }
 
+// ── AI Craft Reply ─────────────────────────────────────────────────
+
+const CRAFT_REPLY_PROMPT = `You are an email assistant. Write a professional, concise reply to the email below.
+
+Rules:
+- Write like a real person. Short, direct, natural prose.
+- NO bullet points, NO numbered lists, NO markdown formatting.
+- NO bold (**), NO italic (*), NO headers (#). Plain text only.
+- Do not add sign-off lines (no "Best regards," etc.) — the user will add those.
+- Do not include any meta-commentary about what you are doing.
+- Return ONLY the reply body text, nothing else.`;
+
+/**
+ * Generate a reply body for an email using AI.
+ * Returns plain text suitable for display in the compose editor.
+ */
+export async function craftReplyBody(
+	ai: Ai,
+	email: { subject: string; body: string; sender: string },
+	threadContext?: Array<{ sender: string; body: string }>,
+): Promise<string | null> {
+	const plainBody = stripHtmlToText(email.body || "").slice(0, 3000);
+	const threadSnippet = (threadContext ?? [])
+		.slice(0, 3)
+		.map((m) => `From: ${m.sender}\n${stripHtmlToText(m.body || "").slice(0, 500)}`)
+		.join("\n---\n");
+
+	const userContent = threadSnippet
+		? `Thread context:\n${threadSnippet}\n\n---\nLatest email:\nFrom: ${email.sender}\nSubject: ${email.subject}\n\n${plainBody}`
+		: `From: ${email.sender}\nSubject: ${email.subject}\n\n${plainBody}`;
+
+	try {
+		const response = (await ai.run(
+			"@cf/meta/llama-3.1-8b-instruct-fast",
+			{
+				messages: [
+					{ role: "system", content: CRAFT_REPLY_PROMPT },
+					{ role: "user", content: userContent },
+				],
+				max_tokens: 1024,
+				temperature: 0.4,
+			},
+		)) as { response?: string };
+
+		return response?.response?.trim() || null;
+	} catch (e) {
+		logger.error("agent", "craftReplyBody AI failed", { error: e });
+		return null;
+	}
+}
+
 // ── Thread Summarization ────────────────────────────────────────────
 
 const SUMMARIZE_PROMPT = `Summarize this email thread in one sentence (max 120 chars). Focus on the topic and current status. Return ONLY the summary, no quotes.`;

@@ -16,6 +16,7 @@ import {
 	PaperPlaneTiltIcon,
 	PencilSimpleIcon,
 	ProhibitIcon,
+	SparkleIcon,
 	StarIcon,
 	TrashIcon,
 	XIcon,
@@ -37,6 +38,8 @@ interface EmailPanelToolbarProps {
 	onReply: () => void;
 	onReplyAll: () => void;
 	onForward: () => void;
+	onAiCraft: () => void;
+	isAiCrafting: boolean;
 	onToggleStar: () => void;
 	onToggleRead: () => void;
 	isSpamFolder: boolean;
@@ -58,6 +61,8 @@ export default function EmailPanelToolbar({
 	onReply,
 	onReplyAll,
 	onForward,
+	onAiCraft,
+	isAiCrafting,
 	onToggleStar,
 	onToggleRead,
 	isSpamFolder,
@@ -128,6 +133,17 @@ export default function EmailPanelToolbar({
 							icon={<ArrowBendUpRightIcon size={18} />}
 							onClick={onForward}
 							aria-label="Forward"
+						/>
+					</Tooltip>
+					<Tooltip content="AI Craft Reply" side="bottom" asChild>
+						<Button
+							variant="ghost"
+							shape="square"
+							size="sm"
+							icon={<SparkleIcon size={18} className="text-kumo-brand" />}
+							onClick={onAiCraft}
+							loading={isAiCrafting}
+							aria-label="AI Craft Reply"
 						/>
 					</Tooltip>
 				</>

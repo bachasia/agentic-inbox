@@ -12,6 +12,8 @@ export interface ComposeOptions {
 	originalEmail?: Email | null;
 	/** When editing a draft, this holds the draft email to pre-fill the composer */
 	draftEmail?: Email | null;
+	/** Pre-fill the reply body with AI-generated content */
+	initialBody?: string;
 }
 
 interface UIState {
