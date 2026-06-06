@@ -462,7 +462,7 @@ export async function craftReplyBody(
 
 	try {
 		const response = (await ai.run(
-			"@cf/meta/llama-3.1-8b-instruct-fast",
+			"@cf/meta/llama-4-scout-17b-16e-instruct",
 			{
 				messages: [
 					{ role: "system", content: CRAFT_REPLY_PROMPT },
