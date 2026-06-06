@@ -444,11 +444,13 @@ Rules:
 /**
  * Generate a reply body for an email using AI.
  * Returns plain text suitable for display in the compose editor.
+ * knowledgeContext: pre-formatted KB snippets injected into the system prompt.
  */
 export async function craftReplyBody(
 	ai: Ai,
 	email: { subject: string; body: string; sender: string },
 	threadContext?: Array<{ sender: string; body: string }>,
+	knowledgeContext?: string,
 ): Promise<string | null> {
 	const plainBody = stripHtmlToText(email.body || "").slice(0, 3000);
 	const threadSnippet = (threadContext ?? [])
@@ -460,12 +462,16 @@ export async function craftReplyBody(
 		? `Thread context:\n${threadSnippet}\n\n---\nLatest email:\nFrom: ${email.sender}\nSubject: ${email.subject}\n\n${plainBody}`
 		: `From: ${email.sender}\nSubject: ${email.subject}\n\n${plainBody}`;
 
+	const systemPrompt = knowledgeContext
+		? `${CRAFT_REPLY_PROMPT}\n\n## Knowledge Base Context\nUse the following information when relevant:\n${knowledgeContext}`
+		: CRAFT_REPLY_PROMPT;
+
 	try {
 		const response = (await ai.run(
 			"@cf/meta/llama-4-scout-17b-16e-instruct",
 			{
 				messages: [
-					{ role: "system", content: CRAFT_REPLY_PROMPT },
+					{ role: "system", content: systemPrompt },
 					{ role: "user", content: userContent },
 				],
 				max_tokens: 1024,

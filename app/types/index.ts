@@ -235,3 +235,19 @@ export interface AutomationRule {
 	createdAt: string;
 	updatedAt: string;
 }
+
+export interface KbArticle {
+	id: string;
+	title: string;
+	content: string;
+	category: "brand" | "product" | "policy" | "faq";
+	chunkCount: number;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface KbArticleInput {
+	title: string;
+	content: string;
+	category: KbArticle["category"];
+}

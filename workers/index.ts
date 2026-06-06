@@ -21,6 +21,7 @@ import {
 } from "./lib/email-helpers";
 import { SendEmailRequestSchema } from "./lib/schemas";
 import { triageEmail, summarizeThread, extractActionItems, extractContactTopics, craftReplyBody } from "./lib/ai";
+import { searchKbChunks } from "./lib/knowledge-vectorize";
 import { embedText, upsertEmailEmbedding, searchSimilarEmails, deleteEmailEmbedding } from "./lib/vectorize";
 import { handleReplyEmail, handleForwardEmail } from "./routes/reply-forward";
 import { Folders } from "../shared/folders";
@@ -30,6 +31,7 @@ import { requireMailbox, type MailboxContext } from "./lib/mailbox";
 import { requireAdmin, requireAuth } from "./auth/middleware";
 import { getUserMailboxIds } from "./auth/permissions";
 import { adminRoutes } from "./routes/admin-routes";
+import knowledgeRoutes from "./routes/knowledge-routes";
 
 type AppContext = Context<MailboxContext>;
 
@@ -95,6 +97,7 @@ app.use("/api/v1/admin/*", requireAdmin);
 app.route("/api/v1/admin", adminRoutes);
 
 app.use("/api/v1/mailboxes/:mailboxId/*", requireMailbox);
+app.route("/api/v1/mailboxes/:mailboxId/knowledge", knowledgeRoutes);
 
 // -- Config ---------------------------------------------------------
 
@@ -456,10 +459,34 @@ app.post("/api/v1/mailboxes/:mailboxId/emails/:id/ai-craft", async (c: AppContex
 			.filter((m) => m.id !== id)
 			.map((m) => ({ sender: m.sender ?? "", body: m.body ?? "" }));
 
+		const mailboxId = c.req.param("mailboxId")!;
+		let knowledgeContext: string | undefined;
+		try {
+			if (c.env.KNOWLEDGE_VECTORIZE) {
+				const query = `${email.subject ?? ""} ${stripHtmlToText(email.body ?? "").slice(0, 300)}`;
+				const chunks = await searchKbChunks(
+					c.env.KNOWLEDGE_VECTORIZE,
+					c.env.AI,
+					c.env.BUCKET,
+					query,
+					mailboxId,
+					3,
+				);
+				if (chunks.length > 0) {
+					knowledgeContext = chunks
+						.map((ch) => `[${ch.category}] ${ch.title}:\n${ch.content}`)
+						.join("\n\n");
+				}
+			}
+		} catch (e) {
+			logger.warn("ai-craft", "KB search failed, proceeding without context", { error: e });
+		}
+
 		const body = await craftReplyBody(
 			c.env.AI,
 			{ subject: email.subject ?? "", body: email.body ?? "", sender: email.sender ?? "" },
 			threadContext,
+			knowledgeContext,
 		);
 
 		if (!body) return c.json({ error: "AI failed to generate reply. Please try again." }, 503);

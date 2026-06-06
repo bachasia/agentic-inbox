@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import type { Email, Folder, Mailbox, Label, Contact, EmailTemplate, ActionItem, ContactIntelligence, AutomationRule, RuleCondition, RuleAction, WooCommerceOrder, GlobalSettings, DomainInfo } from "~/types";
+import type { Email, Folder, Mailbox, Label, Contact, EmailTemplate, ActionItem, ContactIntelligence, AutomationRule, RuleCondition, RuleAction, WooCommerceOrder, GlobalSettings, DomainInfo, KbArticle, KbArticleInput } from "~/types";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -310,6 +310,18 @@ const api = {
 		get<{ orders: WooCommerceOrder[] }>(`/api/v1/mailboxes/${mailboxId}/woocommerce/orders`, {
 			params: refresh ? { email, refresh: "1" } : { email },
 		}),
+
+	// Knowledge Base
+	listKbArticles: (mailboxId: string) =>
+		get<KbArticle[]>(`/api/v1/mailboxes/${mailboxId}/knowledge`),
+	createKbArticle: (mailboxId: string, data: KbArticleInput) =>
+		post<{ id: string }>(`/api/v1/mailboxes/${mailboxId}/knowledge`, data),
+	getKbArticle: (mailboxId: string, articleId: string) =>
+		get<KbArticle>(`/api/v1/mailboxes/${mailboxId}/knowledge/${articleId}`),
+	updateKbArticle: (mailboxId: string, articleId: string, data: KbArticleInput) =>
+		put<KbArticle>(`/api/v1/mailboxes/${mailboxId}/knowledge/${articleId}`, data),
+	deleteKbArticle: (mailboxId: string, articleId: string) =>
+		del<void>(`/api/v1/mailboxes/${mailboxId}/knowledge/${articleId}`),
 };
 
 export default api;

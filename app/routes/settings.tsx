@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 import RichTextEditor from "~/components/RichTextEditor";
 import WooCommerceSettingsSection from "~/components/settings/woocommerce-settings-section";
+import KnowledgeBaseSettingsSection from "~/components/settings/knowledge-base-settings-section";
 import { useMailbox, useUpdateMailbox } from "~/queries/mailboxes";
 import { useLabels, useCreateLabel, useUpdateLabel, useDeleteLabel } from "~/queries/labels";
 import { useTemplates, useCreateTemplate, useUpdateTemplate, useDeleteTemplate } from "~/queries/templates";
@@ -161,6 +162,9 @@ export default function SettingsRoute() {
 					initialSettings={mailbox?.settings?.woocommerce}
 					onChange={setWooSettings}
 				/>
+
+				{/* Knowledge Base */}
+				<KnowledgeBaseSettingsSection mailboxId={mailboxId!} />
 
 				{/* Proactive AI */}
 				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">

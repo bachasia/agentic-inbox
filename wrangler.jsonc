@@ -41,6 +41,10 @@
 		{
 			"binding": "VECTORIZE",
 			"index_name": "email-embeddings"
+		},
+		{
+			"binding": "KNOWLEDGE_VECTORIZE",
+			"index_name": "knowledge-base"
 		}
 	],
 	"durable_objects": {
@@ -114,6 +118,10 @@
 				{
 					"binding": "VECTORIZE",
 					"index_name": "email-embeddings-production"
+				},
+				{
+					"binding": "KNOWLEDGE_VECTORIZE",
+					"index_name": "knowledge-base"
 				}
 			],
 			"durable_objects": {
