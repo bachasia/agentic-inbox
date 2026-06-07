@@ -23,7 +23,11 @@ export default [
 		route("snoozed", "routes/snoozed-emails.tsx"),
 		route("scheduled", "routes/scheduled-emails.tsx"),
 		route("priority", "routes/priority-inbox.tsx"),
-		route("settings", "routes/settings.tsx"),
+		route("settings", "routes/settings-layout.tsx", [
+			index("routes/settings-redirect.tsx"),
+			route("general", "routes/settings-general.tsx"),
+			route("ai", "routes/settings-ai.tsx"),
+		]),
 		route("search", "routes/search-results.tsx"),
 	]),
 	route("all-inboxes", "routes/all-inboxes.tsx"),

@@ -5,7 +5,7 @@ status: completed
 priority: P2
 branch: "main"
 tags: ["ai", "rag", "vectorize", "knowledge-base", "craft"]
-blockedBy: []
+blockedBy: ["260606-2243-ai-settings-sub-route"]
 blocks: []
 created: "2026-06-06T02:12:47.627Z"
 createdBy: "ck:plan"

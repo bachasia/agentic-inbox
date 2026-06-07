@@ -10,7 +10,7 @@ dependencies: [3]
 
 ## Overview
 
-Add a "Knowledge Base" section to the mailbox settings page. Extracted into a separate component (`knowledge-base-settings-section.tsx`) to keep `settings.tsx` under the 200-line modularization limit. Supports list/create/edit/delete articles with category selector.
+Add a "Knowledge Base" section to the AI Settings page. Extracted into a separate component (`knowledge-base-settings-section.tsx`) to keep `settings-ai.tsx` under the 200-line modularization limit. Supports list/create/edit/delete articles with category selector.
 
 ## Requirements
 
@@ -18,7 +18,7 @@ Add a "Knowledge Base" section to the mailbox settings page. Extracted into a se
 - Functional: create article (title, content textarea, category select)
 - Functional: edit article inline or via modal
 - Functional: delete with confirmation
-- Non-functional: `settings.tsx` must not exceed 200 LOC after change
+- Non-functional: `settings-ai.tsx` must not exceed 200 LOC after change
 
 ## Architecture
 
@@ -76,7 +76,7 @@ app/components/settings/knowledge-base-settings-section.tsx
 
 Category badge colors (using Kumo Badge): brand=purple, product=blue, policy=orange, faq=green
 
-### Integration in settings.tsx
+### Integration in settings-ai.tsx
 
 ```tsx
 import KnowledgeBaseSettingsSection from "~/components/settings/knowledge-base-settings-section";
@@ -91,7 +91,7 @@ No state plumbing needed — component is self-contained.
 - Create: `app/components/settings/knowledge-base-settings-section.tsx`
 - Modify: `app/services/api.ts` — add KB API methods
 - Modify: `app/types/index.ts` — add `KbArticle`, `KbArticleInput`
-- Modify: `app/routes/settings.tsx` — import + render KB section
+- Modify: `app/routes/settings-ai.tsx` — import + render KB section
 
 ## Implementation Steps
 
@@ -106,7 +106,7 @@ No state plumbing needed — component is self-contained.
    - Delete: confirm with `window.confirm` (consistent with existing pattern in settings)
    - Show loading spinner (`<Loader>`) while fetching
 
-4. Import and render `<KnowledgeBaseSettingsSection mailboxId={mailboxId!} />` in `app/routes/settings.tsx` below the WooCommerce section
+4. Import and render `<KnowledgeBaseSettingsSection mailboxId={mailboxId!} />` in `app/routes/settings-ai.tsx` below the Proactive AI section
 
 5. Run `npx tsc --noEmit`
 
@@ -116,10 +116,10 @@ No state plumbing needed — component is self-contained.
 - [ ] Creating an article calls POST and shows it in the list
 - [ ] Editing pre-fills the form and calls PUT
 - [ ] Deleting removes from list after confirmation
-- [ ] `settings.tsx` stays under 200 LOC after changes
+- [ ] `settings-ai.tsx` stays under 200 LOC after changes
 - [ ] `npx tsc --noEmit` passes
 
 ## Risk Assessment
 
-- Settings page at 479 LOC — already over limit. Adding KB inline would worsen it. KB as self-contained component keeps settings.tsx lean (adds ~5 lines to wire up).
+- AI Settings page at 179 LOC after refactor. Adding KB inline would push it over 200. KB as self-contained component keeps settings-ai.tsx lean (adds ~5 lines to wire up).
 - Kumo component library used throughout; no new UI dependencies needed.
