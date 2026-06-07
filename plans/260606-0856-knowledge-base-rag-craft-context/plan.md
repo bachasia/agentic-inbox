@@ -1,7 +1,7 @@
 ---
 title: "Knowledge Base RAG per Domain for AI Craft"
 description: "Per-mailbox knowledge base (brand voice, products, policies, FAQ) stored in R2 + dedicated Vectorize index. RAG pipeline injects relevant KB chunks into craftReplyBody at generation time."
-status: pending
+status: completed
 priority: P2
 branch: "main"
 tags: ["ai", "rag", "vectorize", "knowledge-base", "craft"]
@@ -42,10 +42,10 @@ Craft flow:
 
 | Phase | Name | Status |
 |-------|------|--------|
-| 1 | [Infrastructure](./phase-01-infrastructure.md) | Pending |
-| 2 | [Backend KB API](./phase-02-backend-kb-api.md) | Pending |
-| 3 | [AI Craft Integration](./phase-03-ai-craft-integration.md) | Pending |
-| 4 | [Frontend Settings UI](./phase-04-frontend-settings-ui.md) | Pending |
+| 1 | [Infrastructure](./phase-01-infrastructure.md) | Complete |
+| 2 | [Backend KB API](./phase-02-backend-kb-api.md) | Complete |
+| 3 | [AI Craft Integration](./phase-03-ai-craft-integration.md) | Complete |
+| 4 | [Frontend Settings UI](./phase-04-frontend-settings-ui.md) | Complete |
 
 ## Key Files
 
